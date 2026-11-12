@@ -30,22 +30,57 @@ const asRecords = (value) => Array.isArray(value)
   : [];
 
 function normalizeProfile(input, id = Date.now()) {
+  // Accept both the app's existing flat profile shape and the structured
+  // userProfile/experiences/education response used by scraper-style adapters.
+  const source = input.userProfile && typeof input.userProfile === "object"
+    ? input.userProfile
+    : input.profile && typeof input.profile === "object" ? input.profile : input;
+  const firstName = asText(source.firstName);
+  const lastName = asText(source.lastName);
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+  const rawExperiences = asRecords(input.experiences || input.positions);
+  const rawEducations = asRecords(input.educations || input.educationDetails || input.education);
+  const rawVolunteers = asRecords(input.volunteerExperience || input.volunteerExperiences || input.volunteer);
+  const rawSkills = Array.isArray(input.skills) ? input.skills : source.skills;
+
   const profile = {
     id,
-    name: asText(input.name || input.fullName),
-    headline: asText(input.headline || input.title || input.jobTitle),
-    company: asText(input.company),
-    location: asText(input.location),
-    photoUrl: asText(input.photoUrl || input.profilePicture),
-    description: asText(input.description || input.summary),
+    name: asText(source.name || source.fullName || fullName || input.name || input.fullName),
+    headline: asText(source.headline || source.title || source.jobTitle || source.occupation || input.headline || input.title || input.jobTitle),
+    company: asText(source.company || source.companyName || input.company),
+    location: asText(source.location || source.geoLocation || input.location),
+    photoUrl: asText(source.photoUrl || source.profilePicture || source.profilePictureUrl || source.picture || input.photoUrl || input.profilePicture),
+    description: asText(source.description || source.summary || input.description || input.summary),
     experience: asText(input.experience),
-    education: asText(input.education),
-    experiences: asRecords(input.experiences || input.positions),
-    educations: asRecords(input.educations || input.educationDetails),
-    volunteerExperience: asRecords(input.volunteerExperience || input.volunteer),
-    skills: asList(input.skills),
-    profileUrl: asText(input.profileUrl || input.linkedinUrl || input.url),
-    source: asText(input.source) || "User provided",
+    education: asText(typeof input.education === "string" ? input.education : ""),
+    experiences: rawExperiences.map((item) => ({
+      ...item,
+      title: asText(item.title || item.position || item.role),
+      company: asText(item.company || item.companyName),
+      location: asText(item.location),
+      duration: asText(item.duration),
+      dates: asText(item.dates || [item.startDate, item.endDate].filter(Boolean).join(" - ")),
+      description: asText(item.description)
+    })),
+    educations: rawEducations.map((item) => ({
+      ...item,
+      school: asText(item.school || item.schoolName || item.institution),
+      degree: asText(item.degree || item.degreeName),
+      field: asText(item.field || item.fieldOfStudy),
+      dates: asText(item.dates || [item.startDate, item.endDate].filter(Boolean).join(" - "))
+    })),
+    volunteerExperience: rawVolunteers.map((item) => ({
+      ...item,
+      role: asText(item.role || item.title),
+      organization: asText(item.organization || item.company || item.companyName),
+      dates: asText(item.dates || [item.startDate, item.endDate].filter(Boolean).join(" - ")),
+      description: asText(item.description)
+    })),
+    skills: Array.isArray(rawSkills)
+      ? rawSkills.map((skill) => typeof skill === "string" ? asText(skill) : asText(skill?.name)).filter(Boolean)
+      : asList(rawSkills),
+    profileUrl: asText(source.profileUrl || source.linkedinUrl || source.url || input.profileUrl || input.linkedinUrl || input.url),
+    source: asText(input.source) || "Authorized data",
     updatedAt: new Date().toISOString()
   };
   return profile;
