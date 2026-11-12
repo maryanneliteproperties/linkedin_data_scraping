@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Search, Linkedin, RefreshCw, ExternalLink, Users, X, BriefcaseBusiness, GraduationCap, HeartHandshake, Award, Eye, CheckCircle2, AlertCircle, DownloadCloud } from "lucide-react";
 
-const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\\/$/, "") + "/api";
+const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 
 function ProfileDetails({ profile, onClose }) {
   if (!profile) return null;
@@ -81,7 +81,7 @@ export default function App() {
     event.preventDefault();
     setError(""); setNotice("");
     const url = profileUrl.trim();
-    if (!/^https:\/\/(www\\.)?linkedin\\.com\/in\/[A-Za-z0-9_%.-]+\/?(?:\?.*)?$/i.test(url)) {
+    if (!/^https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_%.-]+\/?(?:\?.*)?$/i.test(url)) {
       setError("Valid LinkedIn profile URL enter pannunga.");
       return;
     }
