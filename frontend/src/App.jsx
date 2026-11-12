@@ -28,6 +28,7 @@ function ProfileDetails({ profile, onClose }) {
         </div>
         {profile.description && <p className="profileDescription">{profile.description}</p>}
         <div className="detailGrid">
+          <div><small>Email</small><strong>{profile.email || "—"}</strong></div>
           <div><small>Location</small><strong>{profile.location || "—"}</strong></div>
           <div><small>Experience</small><strong>{profile.experience || "—"}</strong></div>
           <div><small>Education</small><strong>{profile.education || "—"}</strong></div>
@@ -47,6 +48,7 @@ export default function App() {
   const [profiles, setProfiles] = useState([]);
   const [search, setSearch] = useState("");
   const [profileUrl, setProfileUrl] = useState("");
+  const [linkedinProfileUrl, setLinkedinProfileUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
@@ -100,7 +102,7 @@ export default function App() {
     const term = search.toLowerCase().trim();
     if (!term) return profiles;
     return profiles.filter((profile) => [
-      profile.name, profile.headline, profile.company, profile.location,
+      profile.name, profile.email, profile.headline, profile.company, profile.location,
       profile.description, ...(profile.skills || [])
     ].join(" ").toLowerCase().includes(term));
   }, [profiles, search]);
@@ -137,12 +139,12 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({})
+        body: JSON.stringify({ profileUrl: linkedinProfileUrl.trim() })
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "Could not save LinkedIn profile.");
       setProfiles((current) => [result, ...current.filter((item) => item.id !== result.id)]);
-      setNotice("Your LinkedIn basic profile has been saved.");
+      setNotice("Your LinkedIn basic profile has been saved or updated.");
     } catch (err) {
       setError(err.message || "Unable to save your profile.");
     } finally { setSavingMyProfile(false); }
@@ -165,7 +167,10 @@ export default function App() {
           {authUser ? (
             <>
               <span className="signedInUser"><UserRound size={15}/><span>{authUser.name || authUser.email || "LinkedIn member"}</span></span>
-              <button className="secondaryBtn" onClick={saveMyProfile} disabled={savingMyProfile}><Save size={15}/>{savingMyProfile ? "Saving..." : "Save My Profile"}</button>
+              <div className="saveProfileControls">
+                <input aria-label="Your LinkedIn profile URL" type="url" value={linkedinProfileUrl} onChange={(event) => setLinkedinProfileUrl(event.target.value)} placeholder="Paste your LinkedIn profile URL (optional)" />
+                <button className="secondaryBtn" onClick={saveMyProfile} disabled={savingMyProfile}><Save size={15}/>{savingMyProfile ? "Saving..." : "Save My Profile"}</button>
+              </div>
               <button className="iconBtn" onClick={logout} title="Sign out" type="button"><LogOut size={16}/></button>
             </>
           ) : (
@@ -197,8 +202,8 @@ export default function App() {
 
       <section className="tablePanel">
         <div className="tableToolbar"><div><h2>Profile records</h2><p>LinkedIn member data saved in the application</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, role, skills..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
-        <div className="tableWrap"><table><thead><tr><th>NAME</th><th>JOB TITLE</th><th>COMPANY</th><th>LOCATION</th><th>EXPERIENCE</th><th>SKILLS</th><th>PROFILE</th><th>DETAILS</th></tr></thead>
-          <tbody>{loading ? <tr><td colSpan="8" className="empty">Loading profiles...</td></tr> : filtered.length === 0 ? <tr><td colSpan="8" className="empty">No profiles found. Sign in to save your own basic profile.</td></tr> : filtered.map((profile) => <tr key={profile.id}><td><strong>{profile.name}</strong></td><td>{profile.headline || "—"}</td><td>{profile.company || "—"}</td><td>{profile.location || "—"}</td><td>{profile.experience || "—"}</td><td><div className="chips">{(profile.skills || []).slice(0, 3).map((skill) => <span key={skill}>{skill}</span>)}{(profile.skills || []).length > 3 && <span>+{profile.skills.length - 3}</span>}</div></td><td>{profile.profileUrl ? <a className="profileLink" href={profile.profileUrl} target="_blank" rel="noreferrer">View <ExternalLink size={13}/></a> : "—"}</td><td><button className="viewBtn" onClick={() => setSelectedProfile(profile)}><Eye size={14}/> View</button></td></tr>)}</tbody>
+        <div className="tableWrap"><table><thead><tr><th>PHOTO</th><th>NAME</th><th>EMAIL</th><th>JOB TITLE</th><th>COMPANY</th><th>LOCATION</th><th>EXPERIENCE</th><th>SKILLS</th><th>PROFILE</th><th>DETAILS</th></tr></thead>
+          <tbody>{loading ? <tr><td colSpan="10" className="empty">Loading profiles...</td></tr> : filtered.length === 0 ? <tr><td colSpan="10" className="empty">No profiles found. Sign in to save your own basic profile.</td></tr> : filtered.map((profile) => <tr key={profile.id}><td>{profile.photoUrl ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="profileAvatarPlaceholder"><UserRound size={15}/></span>}</td><td><strong>{profile.name}</strong></td><td>{profile.email || "—"}</td><td>{profile.headline || "—"}</td><td>{profile.company || "—"}</td><td>{profile.location || "—"}</td><td>{profile.experience || "—"}</td><td><div className="chips">{(profile.skills || []).slice(0, 3).map((skill) => <span key={skill}>{skill}</span>)}{(profile.skills || []).length > 3 && <span>+{profile.skills.length - 3}</span>}</div></td><td>{profile.profileUrl ? <a className="profileLink" href={profile.profileUrl} target="_blank" rel="noreferrer">View <ExternalLink size={13}/></a> : "—"}</td><td><button className="viewBtn" onClick={() => setSelectedProfile(profile)}><Eye size={14}/> View</button></td></tr>)}</tbody>
         </table></div>
         <div className="tableFooter">Showing {filtered.length} of {profiles.length} profiles <span>Full profile details available through View</span></div>
       </section>
