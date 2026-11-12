@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "name": "Arun Kumar",
+    "headline": "Data Analyst",
+    "company": "ABC Technologies",
+    "location": "Chennai, India",
+    "experience": "3 years",
+    "education": "B.Sc Computer Science",
+    "skills": [
+      "SQL",
+      "Power BI",
+      "Python"
+    ],
+    "profileUrl": "https://www.linkedin.com/in/sample-arun/",
+    "source": "Sample data"
+  },
+  {
+    "id": 2,
+    "name": "David Raj",
+    "headline": "Frontend Developer",
+    "company": "XYZ Solutions",
+    "location": "Bengaluru, India",
+    "experience": "5 years",
+    "education": "B.E. ECE",
+    "skills": [
+      "React",
+      "JavaScript",
+      "CSS"
+    ],
+    "profileUrl": "https://www.linkedin.com/in/sample-david/",
+    "source": "Sample data"
+  }
+]
