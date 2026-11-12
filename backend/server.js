@@ -115,7 +115,7 @@ app.get("/api/profiles/:id", async (req, res, next) => {
 
 app.post("/api/profiles/extract", async (req, res) => {
   const profileUrl = asText(req.body?.profileUrl);
-  if (!/^https:\/\/(www\\.)?linkedin\\.com\/in\/[A-Za-z0-9_%.-]+\/?(?:\?.*)?$/i.test(profileUrl)) {
+  if (!/^https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_%.-]+\/?(?:\?.*)?$/i.test(profileUrl)) {
     return res.status(400).json({ message: "Please provide a valid LinkedIn profile URL." });
   }
 
