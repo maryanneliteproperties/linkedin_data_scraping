@@ -278,6 +278,16 @@ app.post("/api/auth/save-my-profile", async (req, res, next) => {
         email: profile.email || existing.email || "",
         photoUrl: profile.photoUrl || existing.photoUrl || "",
         profileUrl: profile.profileUrl || existing.profileUrl || "",
+        headline: profile.headline || existing.headline || "",
+        company: profile.company || existing.company || "",
+        location: profile.location || existing.location || "",
+        description: profile.description || existing.description || "",
+        experience: profile.experience || existing.experience || "",
+        education: profile.education || existing.education || "",
+        experiences: profile.experiences.length ? profile.experiences : (existing.experiences || []),
+        educations: profile.educations.length ? profile.educations : (existing.educations || []),
+        volunteerExperience: profile.volunteerExperience.length ? profile.volunteerExperience : (existing.volunteerExperience || []),
+        skills: profile.skills.length ? profile.skills : (existing.skills || []),
         linkedinMemberId: profile.linkedinMemberId || existing.linkedinMemberId || ""
       };
       profiles[existingAt] = updatedProfile;
