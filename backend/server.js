@@ -113,6 +113,20 @@ app.get("/api/profiles/:id", async (req, res, next) => {
   }
 });
 
+app.post("/api/profiles/extract", async (req, res) => {
+  const profileUrl = asText(req.body?.profileUrl);
+  if (!/^https:\/\/(www\\.)?linkedin\\.com\/in\/[A-Za-z0-9_%.-]+\/?(?:\?.*)?$/i.test(profileUrl)) {
+    return res.status(400).json({ message: "Please provide a valid LinkedIn profile URL." });
+  }
+
+  // Extraction is intentionally not simulated. Connect an authorized LinkedIn data
+  // provider here before enabling extraction and automatic persistence.
+  return res.status(503).json({
+    code: "PROFILE_PROVIDER_NOT_CONFIGURED",
+    message: "LinkedIn extraction provider is not configured yet. Connect an approved LinkedIn API or authorized data provider to enable extraction."
+  });
+});
+
 app.post("/api/profiles", async (req, res, next) => {
   try {
     const profile = normalizeProfile(req.body);
