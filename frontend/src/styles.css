@@ -31,3 +31,9 @@
 .signedInUser{display:inline-flex;align-items:center;gap:6px;color:#475467;font-size:11px;font-weight:600;max-width:190px}
 .signedInUser span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:760px){.authActions{gap:6px}.authActions .primaryBtn,.authActions .secondaryBtn{font-size:10px;padding:9px 10px}.signedInUser{max-width:120px}}
+
+.saveProfileControls{display:flex;align-items:center;gap:8px;min-width:300px}
+.saveProfileControls input{height:36px;min-width:190px;width:260px;border:1px solid #e3e8ef;border-radius:8px;padding:0 10px;font:11px Inter;outline-color:#0a66c2}
+.profileAvatar,.profileAvatarPlaceholder{width:32px;height:32px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:#eaf3fc;color:#0a66c2;vertical-align:middle}
+.profileAvatarPlaceholder{border:1px solid #dce9f6}
+@media(max-width:760px){.saveProfileControls{width:100%;min-width:0}.saveProfileControls input{width:100%;min-width:0;flex:1}.authActions{width:100%}}
