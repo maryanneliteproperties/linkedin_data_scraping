@@ -57,6 +57,8 @@ function normalizeProfile(input, id = Date.now()) {
   return {
     id,
     name: asText(source.name || source.fullName || fullName || input.name || input.fullName),
+    email: asText(source.email || input.email),
+    linkedinMemberId: asText(source.linkedinMemberId || input.linkedinMemberId),
     headline: asText(source.headline || source.title || source.jobTitle || source.occupation || input.headline || input.title || input.jobTitle),
     company: asText(source.company || source.companyName || input.company),
     location: asText(source.location || source.geoLocation || input.location),
@@ -216,6 +218,7 @@ app.get("/auth/linkedin/callback", requireLinkedInConfig, async (req, res) => {
     sessions.set(sessionId, {
       user: {
         id: asText(user.sub),
+        linkedinMemberId: asText(user.sub),
         name: asText(user.name || [user.given_name, user.family_name].filter(Boolean).join(" ")),
         firstName: asText(user.given_name),
         lastName: asText(user.family_name),
@@ -260,12 +263,26 @@ app.post("/api/auth/save-my-profile", async (req, res, next) => {
     if (validationError) return res.status(400).json({ message: validationError });
 
     const profiles = await readProfiles();
-    const duplicateAt = duplicateIndex(profiles, profile);
-    if (duplicateAt !== -1) {
-      return res.status(409).json({
-        message: "This LinkedIn member is already saved.",
-        duplicateId: profiles[duplicateAt].id
-      });
+    const existingAt = profiles.findIndex((item) =>
+      (profile.linkedinMemberId && item.linkedinMemberId === profile.linkedinMemberId) ||
+      (!item.linkedinMemberId &&
+        item.source === "LinkedIn OpenID Connect" &&
+        asText(item.name).toLowerCase() === profile.name.toLowerCase())
+    );
+    if (existingAt !== -1) {
+      const existing = profiles[existingAt];
+      const updatedProfile = {
+        ...existing,
+        ...profile,
+        id: existing.id,
+        email: profile.email || existing.email || "",
+        photoUrl: profile.photoUrl || existing.photoUrl || "",
+        profileUrl: profile.profileUrl || existing.profileUrl || "",
+        linkedinMemberId: profile.linkedinMemberId || existing.linkedinMemberId || ""
+      };
+      profiles[existingAt] = updatedProfile;
+      await writeProfiles(profiles);
+      return res.status(200).json(updatedProfile);
     }
     profiles.unshift(profile);
     await writeProfiles(profiles);
