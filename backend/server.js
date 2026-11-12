@@ -3,11 +3,13 @@ import cors from "cors";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import dotenv from "dotenv";
 import { fileURLToPath } from "node:url";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, ".env") });
 const DATA_FILE = path.join(__dirname, "data", "profiles.json");
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || "http://localhost:5000/auth/linkedin/callback";
