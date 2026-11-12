@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Linkedin, Plus, RefreshCw, ExternalLink, Users, Upload,
   X, BriefcaseBusiness, GraduationCap, HeartHandshake, Award, Eye,
-  FileJson, CheckCircle2, AlertCircle
+  CheckCircle2, AlertCircle
 } from "lucide-react";
 
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
