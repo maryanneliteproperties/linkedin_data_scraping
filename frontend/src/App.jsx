@@ -1,48 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Linkedin, RefreshCw, ExternalLink, Users, X, BriefcaseBusiness, GraduationCap, HeartHandshake, Award, Eye, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save } from "lucide-react";
+import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save } from "lucide-react";
 
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
-
-function ProfileDetails({ profile, onClose }) {
-  if (!profile) return null;
-  const Section = ({ icon: Icon, title, items, fields }) => (
-    <section className="detailSection">
-      <h3><Icon size={16} />{title}</h3>
-      {items?.length ? items.map((item, index) => (
-        <article className="detailItem" key={index}>
-          {fields.map(([label, key]) => item[key] ? <p key={key}><strong>{label}:</strong> {item[key]}</p> : null)}
-        </article>
-      )) : <p className="muted">No details added.</p>}
-    </section>
-  );
-  const experiences = profile.experiences || [];
-  const educations = profile.educations || [];
-  const volunteers = profile.volunteerExperience || [];
-  return (
-    <div className="modalBackdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="detailsModal" role="dialog" aria-modal="true" aria-label="Profile details">
-        <div className="modalHeader">
-          <div><p className="eyebrow">PROFILE DETAILS</p><h2>{profile.name}</h2><p>{profile.headline || "—"}{profile.company ? ` · ${profile.company}` : ""}</p></div>
-          <button className="closeBtn" onClick={onClose} aria-label="Close"><X size={19}/></button>
-        </div>
-        {profile.description && <p className="profileDescription">{profile.description}</p>}
-        <div className="detailGrid">
-          <div><small>Email</small><strong>{profile.email || "—"}</strong></div>
-          <div><small>Location</small><strong>{profile.location || "—"}</strong></div>
-          <div><small>Experience</small><strong>{profile.experience || "—"}</strong></div>
-          <div><small>Education</small><strong>{profile.education || "—"}</strong></div>
-          <div><small>Data source</small><strong>{profile.source || "User provided"}</strong></div>
-        </div>
-        <Section icon={BriefcaseBusiness} title="Experience" items={experiences} fields={[["Role","title"],["Company","company"],["Location","location"],["Duration","duration"],["Dates","dates"],["Description","description"]]} />
-        <Section icon={GraduationCap} title="Education" items={educations} fields={[["Institution","school"],["Degree","degree"],["Field","field"],["Dates","dates"]]} />
-        <Section icon={HeartHandshake} title="Volunteer experience" items={volunteers} fields={[["Role","role"],["Organization","organization"],["Dates","dates"],["Description","description"]]} />
-        <section className="detailSection"><h3><Award size={16}/>Skills</h3><div className="chips detailChips">{(profile.skills || []).length ? profile.skills.map((skill) => <span key={skill}>{skill}</span>) : <p className="muted">No skills added.</p>}</div></section>
-        {profile.profileUrl && <a className="profileLink modalProfileLink" href={profile.profileUrl} target="_blank" rel="noreferrer">Open LinkedIn profile <ExternalLink size={14}/></a>}
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const [profiles, setProfiles] = useState([]);
@@ -53,7 +13,6 @@ export default function App() {
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [selectedProfile, setSelectedProfile] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [savingMyProfile, setSavingMyProfile] = useState(false);
@@ -103,7 +62,7 @@ export default function App() {
     if (!term) return profiles;
     return profiles.filter((profile) => [
       profile.name, profile.email, profile.headline, profile.company, profile.location,
-      profile.description, ...(profile.skills || [])
+      profile.description, profile.phone, ...(profile.skills || [])
     ].join(" ").toLowerCase().includes(term));
   }, [profiles, search]);
 
@@ -201,11 +160,11 @@ export default function App() {
       </section>
 
       <section className="tablePanel">
-        <div className="tableToolbar"><div><h2>Profile records</h2><p>LinkedIn member data saved in the application</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, role, skills..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
-        <div className="tableWrap"><table><thead><tr><th>PHOTO</th><th>NAME</th><th>EMAIL</th><th>JOB TITLE</th><th>COMPANY</th><th>LOCATION</th><th>EXPERIENCE</th><th>SKILLS</th><th>PROFILE</th><th>DETAILS</th></tr></thead>
-          <tbody>{loading ? <tr><td colSpan="10" className="empty">Loading profiles...</td></tr> : filtered.length === 0 ? <tr><td colSpan="10" className="empty">No profiles found. Sign in to save your own basic profile.</td></tr> : filtered.map((profile) => <tr key={profile.id}><td>{profile.photoUrl ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="profileAvatarPlaceholder"><UserRound size={15}/></span>}</td><td><strong>{profile.name}</strong></td><td>{profile.email || "—"}</td><td>{profile.headline || "—"}</td><td>{profile.company || "—"}</td><td>{profile.location || "—"}</td><td>{profile.experience || "—"}</td><td><div className="chips">{(profile.skills || []).slice(0, 3).map((skill) => <span key={skill}>{skill}</span>)}{(profile.skills || []).length > 3 && <span>+{profile.skills.length - 3}</span>}</div></td><td>{profile.profileUrl ? <a className="profileLink" href={profile.profileUrl} target="_blank" rel="noreferrer">View <ExternalLink size={13}/></a> : "—"}</td><td><button className="viewBtn" onClick={() => setSelectedProfile(profile)}><Eye size={14}/> View</button></td></tr>)}</tbody>
+        <div className="tableToolbar"><div><h2>Profile records</h2><p>LinkedIn member data saved in the application</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
+        <div className="tableWrap"><table><thead><tr><th>PHOTO</th><th>NAME</th><th>DESIGNATION</th><th>COMPANY NAME</th><th>LOCATION</th><th>EMAIL</th><th>PHONE NUMBER</th></tr></thead>
+          <tbody>{loading ? <tr><td colSpan="7" className="empty">Loading profiles...</td></tr> : filtered.length === 0 ? <tr><td colSpan="7" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr> : filtered.map((profile) => <tr key={profile.id}><td>{profile.photoUrl && profile.photoUrl !== "Not Available" ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="notAvailablePhoto">Not Available</span>}</td><td><strong>{profile.name || "Not Available"}</strong></td><td>{profile.headline || "Not Available"}</td><td>{profile.company || "Not Available"}</td><td>{profile.location || "Not Available"}</td><td>{profile.email || "Not Available"}</td><td>{profile.phone || "Not Available"}</td></tr>)}</tbody>
         </table></div>
-        <div className="tableFooter">Showing {filtered.length} of {profiles.length} profiles <span>Full profile details available through View</span></div>
+        <div className="tableFooter">Showing {filtered.length} of {profiles.length} profiles <span>Profile details received from LinkedIn Contact Finder</span></div>
       </section>
       <footer>ProfileDesk <span>•</span> React + Express</footer>
       <ProfileDetails profile={selectedProfile} onClose={() => setSelectedProfile(null)}/>
