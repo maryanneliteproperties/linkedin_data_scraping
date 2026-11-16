@@ -65,7 +65,7 @@ OpenID Connect returns basic information about the member who signs in. It does 
 - `GET /api/profiles` – list saved profiles
 - `GET /api/profiles/:id` – retrieve full profile details
 - `POST /api/profiles/extract` – validates a LinkedIn URL and explains that an approved other-member data provider is required.
-- `POST /api/profiles` – save an authorized structured profile payload.
+- `POST /api/profiles` – save an authorized structured profile payload. The LinkedIn extension can send the visible profile fields to this endpoint as JSON: `name`, `photoUrl`, `designation` (or `headline`), `companyName` (or `company`), `location`, `email`, `phoneNumber` (or `phone`), and `profileUrl`. Missing company, email, and phone values are stored as `Not Available`. Add the extension origin to `CORS_ORIGINS` in the backend environment if the browser blocks extension requests.
 - `POST /api/profiles/import` – import structured profiles (API endpoint only).
 
 ## Storage
