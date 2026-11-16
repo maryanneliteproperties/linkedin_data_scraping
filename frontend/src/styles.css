@@ -37,3 +37,5 @@
 .profileAvatar,.profileAvatarPlaceholder{width:32px;height:32px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:#eaf3fc;color:#0a66c2;vertical-align:middle}
 .profileAvatarPlaceholder{border:1px solid #dce9f6}
 @media(max-width:760px){.saveProfileControls{width:100%;min-width:0}.saveProfileControls input{width:100%;min-width:0;flex:1}.authActions{width:100%}}
+
+.notAvailablePhoto{display:inline-flex;align-items:center;justify-content:center;min-width:64px;height:32px;padding:0 7px;border-radius:6px;background:#f2f4f7;color:#667085;font-size:9px;white-space:nowrap}
