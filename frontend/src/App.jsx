@@ -167,7 +167,7 @@ export default function App() {
         <div className="tableFooter">Showing {filtered.length} of {profiles.length} profiles <span>Profile details received from LinkedIn Contact Finder</span></div>
       </section>
       <footer>ProfileDesk <span>•</span> React + Express</footer>
-      <ProfileDetails profile={selectedProfile} onClose={() => setSelectedProfile(null)}/>
+
     </main>
   );
 }
