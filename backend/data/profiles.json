@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "id": 1794480364946,
+    "name": "Joshua I",
+    "headline": "",
+    "company": "",
+    "location": "",
+    "photoUrl": "https://media.licdn.com/dms/image/v2/D5603AQEB_blaTC1D5g/profile-displayphoto-scale_200_200/B56Zq7DEkXH8AY-/0/1764074739880?e=1796256000&v=beta&t=4opKEzPeR0wd9brBA-v4DN-H8vD-fQAzVTbnOzEJ4Jg",
+    "description": "",
+    "experience": "",
+    "education": "",
+    "experiences": [],
+    "educations": [],
+    "volunteerExperience": [],
+    "skills": [],
+    "profileUrl": "https://www.linkedin.com/in/joshua2790/",
+    "source": "LinkedIn OpenID Connect",
+    "updatedAt": "2026-11-12T11:14:04.597Z",
+    "email": "joepsdesign@gmail.com",
+    "linkedinMemberId": "aRy6XCIuYH"
+  }
+]

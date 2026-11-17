@@ -121,6 +121,32 @@ function duplicateIndex(profiles, candidate) {
   );
 }
 
+function mergeExistingProfile(existing, incoming) {
+  const hasValue = (value) =>
+    Boolean(value && value !== "Not Available");
+
+  return {
+    ...existing,
+    ...incoming,
+
+    // Keep the original record ID
+    id: existing.id,
+
+    // Preserve existing useful details if incoming data is unavailable
+    name: hasValue(incoming.name) ? incoming.name : existing.name,
+    email: hasValue(incoming.email) ? incoming.email : (existing.email || "Not Available"),
+    phone: hasValue(incoming.phone) ? incoming.phone : (existing.phone || "Not Available"),
+    headline: hasValue(incoming.headline) ? incoming.headline : (existing.headline || "Not Available"),
+    company: hasValue(incoming.company) ? incoming.company : (existing.company || "Not Available"),
+    location: hasValue(incoming.location) ? incoming.location : (existing.location || "Not Available"),
+
+    photoUrl: incoming.photoUrl || existing.photoUrl || "",
+    profileUrl: incoming.profileUrl || existing.profileUrl || "",
+
+    updatedAt: new Date().toISOString()
+  };
+}
+
 async function readProfiles() {
   try {
     const parsed = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
@@ -341,28 +367,57 @@ app.post("/api/profiles/extract", async (req, res) => {
   });
 });
 
+
 app.post("/api/profiles", async (req, res, next) => {
   try {
     const profile = normalizeProfile(req.body);
     const validationError = validateProfile(profile);
-    if (validationError) return res.status(400).json({ message: validationError });
+
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
 
     const profiles = await readProfiles();
     const duplicateAt = duplicateIndex(profiles, profile);
+
+    // Existing profile: update instead of returning 409
     if (duplicateAt !== -1) {
-      return res.status(409).json({
-        message: "A profile with the same LinkedIn URL or name and company already exists.",
-        duplicateId: profiles[duplicateAt].id
+      const existing = profiles[duplicateAt];
+
+      const updatedProfile = mergeExistingProfile(
+        existing,
+        profile
+      );
+
+      profiles[duplicateAt] = updatedProfile;
+
+      await writeProfiles(profiles);
+
+      return res.status(200).json({
+        success: true,
+        action: "updated",
+        message: "Existing profile updated successfully.",
+        profile: updatedProfile
       });
     }
 
+    // New profile: insert
     profiles.unshift(profile);
+
     await writeProfiles(profiles);
-    res.status(201).json(profile);
+
+    return res.status(201).json({
+      success: true,
+      action: "created",
+      message: "Profile saved successfully.",
+      profile
+    });
+
   } catch (error) {
     next(error);
   }
 });
+
 
 app.post("/api/profiles/import", async (req, res, next) => {
   try {
