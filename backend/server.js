@@ -24,11 +24,13 @@ const allowedOrigins = (process.env.CORS_ORIGINS || FRONTEND_URL)
   .split(",").map((origin) => origin.trim()).filter(Boolean);
 
 app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error("Origin is not allowed by CORS."));
-  },
-  credentials: true
+  origin: [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "chrome-extension://*"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json({ limit: "5mb" }));
 
