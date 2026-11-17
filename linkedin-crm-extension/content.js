@@ -1603,7 +1603,7 @@
         getBaseProfileUrl(location.href);
 
       if (current !== lastUrl) {
-        handleNavigation();
+        handleNavigation()
       }
     } else if (lastUrl && panel) {
       handleNavigation();
