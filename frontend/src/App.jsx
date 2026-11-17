@@ -46,6 +46,18 @@ export default function App() {
   useEffect(() => {
     loadProfiles();
     loadAuth();
+
+    // Refresh extension-saved profiles while the app is open,
+    // and immediately when the user returns to this tab.
+    const refreshProfiles = () => {
+      if (document.visibilityState === "visible") {
+        loadProfiles(false);
+      }
+    };
+    const refreshTimer = window.setInterval(refreshProfiles, 5000);
+    window.addEventListener("focus", refreshProfiles);
+    document.addEventListener("visibilitychange", refreshProfiles);
+
     const params = new URLSearchParams(window.location.search);
     const authStatus = params.get("linkedin_auth");
     if (authStatus === "success") setNotice("LinkedIn login successful. You can now save your own basic profile.");
@@ -55,6 +67,12 @@ export default function App() {
       const query = params.toString();
       window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
     }
+
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshProfiles);
+      document.removeEventListener("visibilitychange", refreshProfiles);
+    };
   }, []);
 
   const filtered = useMemo(() => {
