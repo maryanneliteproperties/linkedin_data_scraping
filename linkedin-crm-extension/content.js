@@ -1,4 +1,3 @@
-
 (() => {
   console.log("[Contact Finder] content.js initialized on:", location.href);
 
@@ -218,6 +217,99 @@
     }
 
     return { email, phone };
+  }
+
+  // 1b. Extract contact details from Featured section, Resume cards, and Portfolio links.
+  function extractResumeAndFeaturedContact() {
+    let email = "";
+    let phone = "";
+    let resumeUrl = "";
+
+    try {
+      // Find Featured section
+      const featuredSection =
+        document.querySelector("#featured")?.closest("section") ||
+        [...document.querySelectorAll("section")].find((s) => {
+          const h2 = s.querySelector("h2");
+          return h2 && /featured|media/i.test(h2.textContent || "");
+        });
+
+      const candidateNodes = [];
+      if (featuredSection) {
+        candidateNodes.push(...featuredSection.querySelectorAll("li, .artdeco-card, a, [data-view-name]"));
+      }
+
+      // Check for Resume / CV / Drive / PDF links
+      const resumeLinks = [
+        ...document.querySelectorAll(
+          'a[href*="drive.google.com"], a[href*="dropbox.com"], a[href*=".pdf"], a[href*="/document/"], a[href*="/media/"], a[aria-label*="resume" i], a[aria-label*="cv" i]'
+        )
+      ];
+
+      for (const link of resumeLinks) {
+        const href = link.getAttribute("href") || "";
+        const label = (link.textContent || "").toLowerCase();
+        if (/resume|cv|curriculum|portfolio|bio|\.pdf/i.test(href) || /resume|cv|portfolio|profile/i.test(label)) {
+          if (!resumeUrl) resumeUrl = href;
+          candidateNodes.push(link.closest("div") || link.parentElement || link);
+        }
+      }
+
+      const allText = [];
+      if (featuredSection) {
+        allText.push(featuredSection.innerText || featuredSection.textContent || "");
+      }
+      for (const node of candidateNodes) {
+        if (node) allText.push(node.innerText || node.textContent || "");
+      }
+
+      const combinedText = allText.join("\n");
+
+      // Extract email from resume/featured text
+      if (!email) {
+        const emailMatch = combinedText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i);
+        if (emailMatch) {
+          email = emailMatch[0].trim();
+        }
+      }
+
+      // Extract phone: keyword format (Phone: 8807..., Mobile: +91..., Contact: ...)
+      if (!phone) {
+        const keywordMatch = combinedText.match(
+          /(?:phone|mobile|contact|call|whatsapp|tel|cell|ph)[:\s-]*(\+?[\d][\d\s().-]{7,18}\d)/i
+        );
+        if (keywordMatch) {
+          const raw = keywordMatch[1].trim();
+          if (raw.replace(/\D/g, "").length >= 8) {
+            phone = raw;
+          }
+        }
+      }
+
+      // Extract phone: Indian 10-digit mobile format (+91 or starts with 6,7,8,9)
+      if (!phone) {
+        const indianMatch = combinedText.match(/(?:\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}/);
+        if (indianMatch) {
+          phone = indianMatch[0].trim();
+        }
+      }
+
+      // Extract phone: general international number
+      if (!phone) {
+        const phoneMatches = combinedText.match(/\+?\d{1,4}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,5}[-.\s]?\d{1,5}/g) || [];
+        for (const p of phoneMatches) {
+          const digits = p.replace(/\D/g, "");
+          if (digits.length >= 10 && digits.length <= 14 && !/^(19|20)\d{2}/.test(p.trim())) {
+            phone = p.trim();
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[Contact Finder] Error extracting from Resume / Featured:", err);
+    }
+
+    return { email, phone, resumeUrl };
   }
 
   // 2. Extract contact details from contact modal or document.
@@ -444,11 +536,16 @@
   }
 
   // 3. Open Contact Info and capture details.
-  async function revealContactModal(timeout = 1200) {
+    async function revealContactModal(timeout = 1200) {
     const aboutContact = extractAboutContact();
+    const resumeContact = extractResumeAndFeaturedContact();
+    const fallbackContact = {
+      email: aboutContact.email || resumeContact.email || "",
+      phone: aboutContact.phone || resumeContact.phone || ""
+    };
 
-    if (aboutContact.email && aboutContact.phone) {
-      return aboutContact;
+    if (fallbackContact.email && fallbackContact.phone) {
+      return fallbackContact;
     }
 
     let modal = document.querySelector(
@@ -516,13 +613,14 @@
       );
     }
 
-    if (!result.email && aboutContact.email) {
-      result.email = aboutContact.email;
+    if (!result.email) {
+      result.email = aboutContact.email || resumeContact.email || "";
     }
 
-    if (!result.phone && aboutContact.phone) {
-      result.phone = aboutContact.phone;
+    if (!result.phone) {
+      result.phone = aboutContact.phone || resumeContact.phone || "";
     }
+
 
     if (result.email || result.phone) {
       const isContactRoute =
@@ -913,6 +1011,7 @@
         profileImages[0]?.getAttribute("src") || "";
 
       const aboutContacts = extractAboutContact();
+      const resumeContacts = extractResumeAndFeaturedContact();
 
       return {
         name: name || "Name Not Available",
@@ -921,8 +1020,8 @@
         location: locationText || "",
         avatar,
         profileUrl: getBaseProfileUrl(location.href),
-        email: aboutContacts.email || "",
-        phone: aboutContacts.phone || ""
+        email: aboutContacts.email || resumeContacts.email || "",
+        phone: aboutContacts.phone || resumeContacts.phone || ""
       };
     } catch (e) {
       console.error(
@@ -1005,9 +1104,15 @@
           contactRevealed || p.email || p.phone
             ? `
               <div class="acc-contact">
+               
                 <div class="acc-contact-item">
                   <span class="acc-contact-label">Business Email</span>
                   <div class="acc-contact-value">${esc(p.email || "Not Available")}</div>
+                  ${
+                    (!p.email || p.email === "Not Available") && p.name && p.company
+                      ? `<button class="acc-sub-btn" data-action="find-email">⚡ Find Business Email</button>`
+                      : ""
+                  }
                 </div>
 
                 <div class="acc-contact-item">
@@ -1088,6 +1193,64 @@
           if (message) {
             message.textContent =
               "Unable to fetch contact details.";
+            message.className = "acc-message error";
+          }
+        }
+
+        return;
+      }
+
+      if (action === "find-email") {
+        button.disabled = true;
+        button.textContent = "🔍 Checking Mail Server...";
+
+        try {
+          const current = getProfile();
+          
+          chrome.runtime.sendMessage(
+            {
+              type: "FIND_BUSINESS_EMAIL",
+              name: current.name,
+              company: current.company
+            },
+            async (data) => {
+              if (chrome.runtime.lastError) {
+                console.error("[Contact Finder] Extension background error:", chrome.runtime.lastError.message);
+                button.disabled = false;
+                button.textContent = "⚡ Find Business Email";
+                if (message) {
+                  message.textContent = "Service worker error. Please reload extension.";
+                  message.className = "acc-message error";
+                }
+                return;
+              }
+
+              if (data && data.success && data.email) {
+                cachedProfile.email = data.email;
+                await saveProfileToLocalStorage(cachedProfile);
+                contactRevealed = true;
+                render();
+                const newMsg = panel?.querySelector(".acc-message");
+                if (newMsg) {
+                  newMsg.textContent = `Found ${data.status === "deliverable" ? "verified" : "predicted"} email: ${data.email}`;
+                  newMsg.className = "acc-message success";
+                }
+              } else {
+                button.disabled = false;
+                button.textContent = "⚡ Find Business Email";
+                if (message) {
+                  message.textContent = data?.message || "No active mail domain found for this company.";
+                  message.className = "acc-message error";
+                }
+              }
+            }
+          );
+        } catch (err) {
+          console.error("[Contact Finder] Error:", err);
+          button.disabled = false;
+          button.textContent = "⚡ Find Business Email";
+          if (message) {
+            message.textContent = "Could not initiate search.";
             message.className = "acc-message error";
           }
         }

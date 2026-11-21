@@ -5,6 +5,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import dotenv from "dotenv";
 import { fileURLToPath } from "node:url";
+import dns from "node:dns/promises";
+import net from "node:net";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -187,6 +189,193 @@ function requireLinkedInConfig(req, res, next) {
   next();
 }
 
+// --- Smart Email Finder & Verifier (Fast, Non-blocking, Zero Third-Party) ---
+function extractDomainCandidates(company) {
+  if (!company) return [];
+  
+  const cleaned = company
+    .replace(/\+\s*\d+\s*more/gi, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/\[.*?\]/g, "")
+    .replace(/\b(group of companies|group|pvt ltd|private limited|ltd|limited|inc|llc|corp|corporation|technologies|technology|solutions|services|enterprises|consultancy|consulting|holdings|systems|international|global|foundation|trust|llp|co|company)\b/gi, "")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .toLowerCase();
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const candidates = new Set();
+  const joined = words.join("");
+  const firstWord = words[0];
+  const acronym = words.length >= 2 ? words.map((w) => w[0]).join("") : "";
+
+  const stems = [joined, firstWord, acronym].filter((s) => s && s.length >= 2);
+
+  for (const stem of stems) {
+    candidates.add(`${stem}.com`);
+    candidates.add(`${stem}.in`);
+    candidates.add(`${stem}.co`);
+  }
+
+  return Array.from(candidates);
+}
+
+function generateCandidates(fullName, company, explicitDomain = "") {
+  const parts = fullName.toLowerCase().replace(/[^a-z\s]/g, "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return [];
+  const first = parts[0];
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+
+  let domains = [];
+  if (explicitDomain) {
+    domains.push(explicitDomain.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").trim());
+  } else {
+    domains = extractDomainCandidates(company);
+  }
+
+  if (domains.length === 0) return [];
+
+  const candidates = [];
+  for (const domain of domains) {
+    if (last) {
+      candidates.push({ email: `${first}.${last}@${domain}`, pattern: "first.last", domain });
+      candidates.push({ email: `${first}${last}@${domain}`, pattern: "firstlast", domain });
+      candidates.push({ email: `${first[0]}.${last}@${domain}`, pattern: "f.last", domain });
+      candidates.push({ email: `${first[0]}${last}@${domain}`, pattern: "flast", domain });
+      candidates.push({ email: `${first}.${last[0]}@${domain}`, pattern: "first.l", domain });
+    }
+    candidates.push({ email: `${first}@${domain}`, pattern: "first", domain });
+  }
+  return candidates;
+}
+
+async function checkMxFast(domain, timeoutMs = 1500) {
+  try {
+    const promise = dns.resolveMx(domain);
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("dns_timeout")), timeoutMs));
+    const mxRecords = await Promise.race([promise, timeout]);
+    if (mxRecords && mxRecords.length > 0) {
+      mxRecords.sort((a, b) => a.priority - b.priority);
+      return { domain, hasMx: true, host: mxRecords[0].exchange };
+    }
+    return { domain, hasMx: false };
+  } catch {
+    return { domain, hasMx: false };
+  }
+}
+
+async function verifyMxAndSmtp(email, host, timeoutMs = 1800) {
+  return new Promise((resolve) => {
+    let resolved = false;
+    let timer = null;
+
+    const finish = (result) => {
+      if (!resolved) {
+        resolved = true;
+        if (timer) clearTimeout(timer);
+        try { socket.destroy(); } catch (_) {}
+        resolve(result);
+      }
+    };
+
+    timer = setTimeout(() => {
+      finish({ email, status: "predicted", reason: "hard_timeout" });
+    }, timeoutMs);
+
+    const socket = net.createConnection(25, host);
+    socket.setTimeout(timeoutMs);
+
+    let step = 0;
+
+    socket.on("timeout", () => finish({ email, status: "predicted", reason: "socket_timeout" }));
+    socket.on("error", () => finish({ email, status: "predicted", reason: "port_blocked" }));
+    socket.on("close", () => finish({ email, status: "predicted", reason: "socket_closed" }));
+    socket.on("end", () => finish({ email, status: "predicted", reason: "socket_ended" }));
+
+    socket.on("data", (data) => {
+      const reply = data.toString();
+      const code = parseInt(reply.substring(0, 3), 10);
+
+      if (step === 0 && code === 220) {
+        step++;
+        socket.write("HELO mail.local\r\n");
+      } else if (step === 1 && code === 250) {
+        step++;
+        socket.write("MAIL FROM:<verify@mail.local>\r\n");
+      } else if (step === 2 && code === 250) {
+        step++;
+        socket.write(`RCPT TO:<${email}>\r\n`);
+      } else if (step === 3) {
+        if (code === 250) {
+          finish({ email, status: "deliverable", mxHost: host });
+        } else if (code >= 500) {
+          finish({ email, status: "undeliverable", mxHost: host, code });
+        } else {
+          finish({ email, status: "predicted", mxHost: host, code });
+        }
+      }
+    });
+  });
+}
+
+async function findEmail(name, company, domain = "") {
+  const candidates = generateCandidates(name, company, domain);
+  if (candidates.length === 0) {
+    return { success: false, message: "Could not generate candidates for this name and company." };
+  }
+
+  const distinctDomains = Array.from(new Set(candidates.map((c) => c.domain)));
+  
+  const mxChecks = await Promise.allSettled(
+    distinctDomains.slice(0, 6).map((d) => checkMxFast(d, 1500))
+  );
+
+  const validDomainMap = new Map();
+  for (const res of mxChecks) {
+    if (res.status === "fulfilled" && res.value.hasMx) {
+      validDomainMap.set(res.value.domain, res.value.host);
+    }
+  }
+
+  if (validDomainMap.size > 0) {
+    const validCandidates = candidates.filter((c) => validDomainMap.has(c.domain));
+    const testBatch = validCandidates.slice(0, 2);
+
+    for (const c of testBatch) {
+      const host = validDomainMap.get(c.domain);
+      const res = await verifyMxAndSmtp(c.email, host, 1800);
+      if (res.status === "deliverable") {
+        return {
+          success: true,
+          email: c.email,
+          status: "deliverable",
+          domain: c.domain,
+          note: "Mailbox verified deliverable via SMTP handshake."
+        };
+      }
+    }
+
+    const bestCandidate = validCandidates[0];
+    return {
+      success: true,
+      email: bestCandidate.email,
+      status: "predicted",
+      domain: bestCandidate.domain,
+      note: "Company domain verified (Active MX). Standard enterprise format matched."
+    };
+  }
+
+  const fallback = candidates[0];
+  return {
+    success: true,
+    email: fallback.email,
+    status: "predicted",
+    domain: fallback.domain,
+    note: "Pattern predicted from company name."
+  };
+}
+
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", message: "LinkedIn Profile Viewer API is running" });
 });
@@ -339,6 +528,27 @@ app.post("/api/auth/logout", (req, res) => {
   res.json({ success: true });
 });
 
+app.post("/api/profiles/find-email", async (req, res) => {
+  try {
+    const name = asText(req.body?.name);
+    const company = asText(req.body?.company);
+    const domain = asText(req.body?.domain);
+
+    if (!name) {
+      return res.status(400).json({ success: false, message: "Profile name is required." });
+    }
+    if (!company && !domain) {
+      return res.status(400).json({ success: false, message: "Company name or domain is required." });
+    }
+
+    const result = await findEmail(name, company, domain);
+    res.json(result);
+  } catch (err) {
+    console.error("Email finder error:", err);
+    res.status(500).json({ success: false, message: "Server error during email lookup." });
+  }
+});
+
 app.get("/api/profiles", async (_req, res, next) => {
   try {
     res.json(await readProfiles());
@@ -358,6 +568,73 @@ app.get("/api/profiles/:id", async (req, res, next) => {
   }
 });
 
+app.put("/api/profiles/:id", async (req, res, next) => {
+  try {
+    const profiles = await readProfiles();
+    const index = profiles.findIndex(
+      (item) => String(item.id) === req.params.id
+    );
+
+    if (index === -1) {
+      return res.status(404).json({ message: "Profile not found." });
+    }
+
+    const existing = profiles[index];
+
+    const updatedProfile = normalizeProfile(
+      { ...existing, ...req.body },
+      existing.id
+    );
+
+    const validationError = validateProfile(updatedProfile);
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
+
+    profiles[index] = {
+      ...existing,
+      ...updatedProfile,
+      id: existing.id
+    };
+
+    await writeProfiles(profiles);
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully.",
+      profile: profiles[index]
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/profiles/:id", async (req, res, next) => {
+  try {
+    const profiles = await readProfiles();
+    const index = profiles.findIndex(
+      (item) => String(item.id) === req.params.id
+    );
+
+    if (index === -1) {
+      return res.status(404).json({ message: "Profile not found." });
+    }
+
+    const deletedProfile = profiles[index];
+    profiles.splice(index, 1);
+
+    await writeProfiles(profiles);
+
+    res.json({
+      success: true,
+      message: "Profile deleted successfully.",
+      id: deletedProfile.id
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/profiles/extract", async (req, res) => {
   const profileUrl = asText(req.body?.profileUrl);
   if (!/^https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_%.-]+\/?(?:\?.*)?$/i.test(profileUrl)) {
@@ -368,7 +645,6 @@ app.post("/api/profiles/extract", async (req, res) => {
     message: "LinkedIn OpenID Connect only provides the signed-in member's basic profile. It does not authorize extraction of other members' profiles. An approved API/provider for that data is required."
   });
 });
-
 
 app.post("/api/profiles", async (req, res, next) => {
   try {
@@ -419,7 +695,6 @@ app.post("/api/profiles", async (req, res, next) => {
     next(error);
   }
 });
-
 
 app.post("/api/profiles/import", async (req, res, next) => {
   try {

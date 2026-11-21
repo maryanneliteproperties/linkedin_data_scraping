@@ -21,8 +21,50 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 });
 
-// Save LinkedIn profile to the profile table backend
+// Message listener for both Email Search & Profile Save
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  
+  // 1. New: Find Business Email via backend DNS/SMTP
+  if (message.type === "FIND_BUSINESS_EMAIL") {
+    (async () => {
+      const endpoints = [
+        "http://localhost:5000/api/profiles/find-email",
+        "http://127.0.0.1:5000/api/profiles/find-email"
+      ];
+
+      let lastError = null;
+      for (const url of endpoints) {
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              name: message.name,
+              company: message.company
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            return sendResponse(data);
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      console.error("[Background] Find email request failed:", lastError);
+      sendResponse({
+        success: false,
+        message: "Backend server not reachable at localhost:5000. Please ensure node server.js is running."
+      });
+    })();
+    return true;
+  }
+
+  // 2. Existing: Save LinkedIn profile to backend
   if (message.type !== "SAVE_LINKEDIN_PROFILE") {
     return;
   }
