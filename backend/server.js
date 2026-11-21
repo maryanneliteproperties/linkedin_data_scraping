@@ -1,17 +1,23 @@
 import express from "express";
 import cors from "cors";
-import fs from "node:fs/promises";
-import path from "node:path";
-import crypto from "node:crypto";
 import dotenv from "dotenv";
-import { fileURLToPath } from "node:url";
-import dns from "node:dns/promises";
-import net from "node:net";
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+import crypto from "crypto";
+import {
+  searchSignalHire,
+  getSignalHireCredits,
+  parseLocation,
+  deduplicateContacts
+} from "./services/signalhire.js";
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, ".env") });
+
 const DATA_FILE = path.join(__dirname, "data", "profiles.json");
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || "http://localhost:5000/auth/linkedin/callback";
@@ -19,633 +25,384 @@ const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || "";
 const LINKEDIN_CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET || "";
 const SESSION_COOKIE = "linkedin_profile_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
 const pendingStates = new Map();
 const sessions = new Map();
 
-const allowedOrigins = (process.env.CORS_ORIGINS || FRONTEND_URL)
-  .split(",").map((origin) => origin.trim()).filter(Boolean);
+// Scalable CORS configuration
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+  })
+);
 
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "chrome-extension://*"
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
-const asText = (value) => typeof value === "string" ? value.trim() : "";
-const asList = (value) => {
-  if (Array.isArray(value)) return value.map(asText).filter(Boolean);
-  if (typeof value === "string") return value.split(",").map(asText).filter(Boolean);
-  return [];
-};
-const asRecords = (value) => Array.isArray(value)
-  ? value.filter((item) => item && typeof item === "object" && !Array.isArray(item))
-  : [];
+// Helper utilities
+const asText = (value) => (typeof value === "string" ? value.trim() : "");
+const asRecords = (value) => (Array.isArray(value) ? value.filter((i) => i && typeof i === "object") : []);
 
-function normalizeProfile(input, id = Date.now()) {
+/**
+ * Standardize and normalize profile schema across all sources (SignalHire, Extension, CRM)
+ * Guarantee "Not Available" for missing fields, with no guesswork and no duplicates.
+ */
+export function normalizeProfile(input, id = Date.now()) {
   const source = input.userProfile && typeof input.userProfile === "object"
     ? input.userProfile
-    : input.profile && typeof input.profile === "object" ? input.profile : input;
+    : input.profile && typeof input.profile === "object"
+    ? input.profile
+    : input;
+
+  // 1. Profile: Name & Photo
   const firstName = asText(source.firstName || source.given_name);
   const lastName = asText(source.lastName || source.family_name);
-  const fullName = [firstName, lastName].filter(Boolean).join(" ");
-  const rawExperiences = asRecords(input.experiences || input.positions);
-  const rawEducations = asRecords(input.educations || input.educationDetails || input.education);
-  const rawVolunteers = asRecords(input.volunteerExperience || input.volunteerExperiences || input.volunteer);
-  const rawSkills = Array.isArray(input.skills) ? input.skills : source.skills;
+  const combinedName = [firstName, lastName].filter(Boolean).join(" ");
+  const rawName = asText(source.name || source.fullName || combinedName || input.name || input.fullName);
+  const name = rawName && rawName !== "Name Not Available" ? rawName : "Not Available";
+
+  const rawPhoto = asText(
+    source.photoUrl || source.photo?.url || source.avatar || source.picture || input.photoUrl || input.avatar
+  );
+  const photoUrl = rawPhoto && rawPhoto !== "Not Available" ? rawPhoto : "Not Available";
+
+  // 2. Professional: Designation & Company
+  const rawDesignation = asText(
+    source.designation || source.headline || source.headLine || source.title || input.designation || input.headline
+  );
+  const designation = rawDesignation && rawDesignation !== "Designation Not Available" ? rawDesignation : "Not Available";
+
+  const rawCompany = asText(source.company || source.companyName || input.company || input.companyName);
+  const company = rawCompany && rawCompany !== "Company Not Available" ? rawCompany : "Not Available";
+
+  // 3. Location: City, Country, Full Location
+  const rawLocation = asText(source.location || source.geoLocation || input.location);
+  let city = asText(source.city || input.city);
+  let country = asText(source.country || input.country);
+  let locationStr = rawLocation && rawLocation !== "City Not Available" ? rawLocation : "";
+
+  if (!locationStr && (city || country)) {
+    locationStr = [city, country].filter(Boolean).join(", ");
+  }
+
+  if (locationStr && (!city || !country)) {
+    const parts = locationStr.split(",").map((p) => p.trim()).filter(Boolean);
+    if (!city && parts.length > 0) city = parts[0];
+    if (!country && parts.length > 1) country = parts[parts.length - 1];
+  }
+
+  // 4. Contact: Email, Mobile, Personal Email, Deduplicated Lists
+  const rawEmail = asText(source.email || source.emailAddress || input.email || input.emailAddress);
+  const email = rawEmail && rawEmail !== "Not Available" ? rawEmail : "Not Available";
+
+  const personalEmail = asText(source.personalEmail || input.personalEmail || "");
+
+  const rawPhone = asText(source.phone || source.phoneNumber || source.mobile || input.phone || input.phoneNumber || input.mobile);
+  const phone = rawPhone && rawPhone !== "Not Available" ? rawPhone : "Not Available";
+
+  const allEmails = deduplicateContacts(
+    [
+      ...(Array.isArray(source.allEmails) ? source.allEmails : []),
+      ...(Array.isArray(input.allEmails) ? input.allEmails : []),
+      ...(email !== "Not Available" ? [{ type: "email", value: email, subType: "work" }] : []),
+      ...(personalEmail ? [{ type: "email", value: personalEmail, subType: "personal" }] : [])
+    ],
+    "email"
+  );
+
+  const allPhones = deduplicateContacts(
+    [
+      ...(Array.isArray(source.allPhones) ? source.allPhones : []),
+      ...(Array.isArray(input.allPhones) ? input.allPhones : []),
+      ...(phone !== "Not Available" ? [{ type: "phone", value: phone, subType: "mobile" }] : [])
+    ],
+    "phone"
+  );
+
+  // 5. Experience: Work Experience
+  const rawExperiences = asRecords(source.experiences || input.experiences || source.experience || input.experience);
+  const experiences = rawExperiences.map((item) => ({
+    position: asText(item.position || item.title || item.role) || "Not Available",
+    company: asText(item.company || item.companyName) || "Not Available",
+    started: asText(item.started || item.startDate || item.dates?.split("-")[0]),
+    ended: asText(item.ended || item.endDate || (item.current ? "Present" : "")),
+    current: Boolean(item.current),
+    summary: asText(item.summary || item.description),
+    location: asText(item.location)
+  }));
+
+  // 6. Education: Education Details
+  const rawEducations = asRecords(source.educations || input.educations || source.education || input.education);
+  const educations = rawEducations.map((item) => {
+    let degreeStr = "";
+    if (Array.isArray(item.degree)) {
+      degreeStr = item.degree.filter(Boolean).join(", ");
+    } else {
+      degreeStr = asText(item.degree || item.degreeName);
+    }
+
+    return {
+      university: asText(item.university || item.school || item.schoolName || item.institution) || "Not Available",
+      degree: degreeStr || "Not Available",
+      faculty: asText(item.faculty || item.fieldOfStudy || item.field),
+      startedYear: asText(item.startedYear || item.startYear),
+      endedYear: asText(item.endedYear || item.endYear)
+    };
+  });
+
+  // 7. Skills: Deduplicated string list
+  const rawSkills = Array.isArray(source.skills)
+    ? source.skills
+    : Array.isArray(input.skills)
+    ? input.skills
+    : [];
+  const skills = [...new Set(rawSkills.map((s) => asText(typeof s === "object" ? s.name : s)).filter(Boolean))];
+
+  // 8. Social: LinkedIn Profile URL
+  const rawProfileUrl = asText(source.profileUrl || source.linkedinUrl || input.profileUrl || input.linkedinUrl);
+  const profileUrl = rawProfileUrl || "Not Available";
 
   return {
     id,
-    name: asText(source.name || source.fullName || fullName || input.name || input.fullName),
-    email: asText(source.email || source.emailAddress || input.email || input.emailAddress) || "Not Available",
-    phone: asText(source.phone || source.phoneNumber || source.mobile || input.phone || input.phoneNumber || input.mobile) || "Not Available",
-    linkedinMemberId: asText(source.linkedinMemberId || input.linkedinMemberId),
-    headline: asText(source.headline || source.designation || source.title || source.jobTitle || source.occupation || input.headline || input.designation || input.title || input.jobTitle) || "Not Available",
-    company: asText(source.company || source.companyName || input.company || input.companyName) || "Not Available",
-    location: asText(source.location || source.geoLocation || input.location) || "Not Available",
-    photoUrl: asText(source.photoUrl || source.profilePicture || source.profilePictureUrl || source.picture || source.pictureUrl || source.photo || source.imageUrl || input.photoUrl || input.profilePicture || input.photo || input.imageUrl),
-    description: asText(source.description || source.summary || input.description || input.summary),
-    experience: asText(input.experience),
-    education: asText(typeof input.education === "string" ? input.education : ""),
-    experiences: rawExperiences.map((item) => ({
-      ...item,
-      title: asText(item.title || item.position || item.role),
-      company: asText(item.company || item.companyName),
-      location: asText(item.location),
-      duration: asText(item.duration),
-      dates: asText(item.dates || [item.startDate, item.endDate].filter(Boolean).join(" - ")),
-      description: asText(item.description)
-    })),
-    educations: rawEducations.map((item) => ({
-      ...item,
-      school: asText(item.school || item.schoolName || item.institution),
-      degree: asText(item.degree || item.degreeName),
-      field: asText(item.field || item.fieldOfStudy),
-      dates: asText(item.dates || [item.startDate, item.endDate].filter(Boolean).join(" - "))
-    })),
-    volunteerExperience: rawVolunteers.map((item) => ({
-      ...item,
-      role: asText(item.role || item.title),
-      organization: asText(item.organization || item.company || item.companyName),
-      dates: asText(item.dates || [item.startDate, item.endDate].filter(Boolean).join(" - ")),
-      description: asText(item.description)
-    })),
-    skills: Array.isArray(rawSkills)
-      ? rawSkills.map((skill) => typeof skill === "string" ? asText(skill) : asText(skill?.name)).filter(Boolean)
-      : asList(rawSkills),
-    profileUrl: asText(source.profileUrl || source.linkedinUrl || source.url || input.profileUrl || input.linkedinUrl || input.url),
-    source: asText(input.source) || "Authorized data",
+    name,
+    photoUrl,
+    designation,
+    company,
+    location: locationStr || "Not Available",
+    city: city || "Not Available",
+    country: country || "Not Available",
+    email,
+    personalEmail,
+    phone,
+    allEmails,
+    allPhones,
+    experiences,
+    educations,
+    skills,
+    profileUrl,
+    source: asText(source.source || input.source) || "LinkedIn CRM",
+    createdAt: asText(source.createdAt || input.createdAt) || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 }
 
+/**
+ * Validate required fields
+ */
 function validateProfile(profile) {
-  if (!profile.name) return "Name is required.";
-  if (profile.profileUrl && !/^https:\/\/(www\.)?linkedin\.com\//i.test(profile.profileUrl)) {
-    return "Please provide a valid LinkedIn profile URL.";
+  if (!profile.name || profile.name === "Not Available") {
+    return "Profile name is required.";
   }
-  if (profile.photoUrl && !/^https:\/\//i.test(profile.photoUrl)) {
-    return "Photo URL must use HTTPS.";
+  if (!profile.profileUrl || profile.profileUrl === "Not Available") {
+    return "Profile URL is required.";
   }
-  return "";
+  return null;
 }
 
+/**
+ * Find index of duplicate profile (matches by LinkedIn URL or by Name + Company)
+ */
 function duplicateIndex(profiles, candidate) {
-  const url = candidate.profileUrl.toLowerCase();
-  if (url) return profiles.findIndex((item) => asText(item.profileUrl).toLowerCase() === url);
-  const name = candidate.name.toLowerCase();
-  const company = candidate.company.toLowerCase();
-  return profiles.findIndex((item) =>
-    asText(item.name).toLowerCase() === name &&
-    asText(item.company).toLowerCase() === company
-  );
+  const targetUrl = asText(candidate.profileUrl).toLowerCase().replace(/\/+$/, "");
+  const targetName = asText(candidate.name).toLowerCase();
+  const targetCompany = asText(candidate.company).toLowerCase();
+
+  return profiles.findIndex((item) => {
+    const itemUrl = asText(item.profileUrl).toLowerCase().replace(/\/+$/, "");
+    if (targetUrl && targetUrl !== "not available" && itemUrl && itemUrl !== "not available") {
+      if (itemUrl === targetUrl) return true;
+    }
+    const itemName = asText(item.name).toLowerCase();
+    const itemCompany = asText(item.company).toLowerCase();
+    if (targetName && targetCompany && targetCompany !== "not available") {
+      if (itemName === targetName && itemCompany === targetCompany) return true;
+    }
+    return false;
+  });
 }
 
+/**
+ * Merge existing record with fresh incoming data cleanly without duplicates
+ */
 function mergeExistingProfile(existing, incoming) {
-  const hasValue = (value) =>
-    Boolean(value && value !== "Not Available");
+  const isAvailable = (val) => val && val !== "Not Available";
 
   return {
     ...existing,
     ...incoming,
-
-    // Keep the original record ID
     id: existing.id,
-
-    // Preserve existing useful details if incoming data is unavailable
-    name: hasValue(incoming.name) ? incoming.name : existing.name,
-    email: hasValue(incoming.email) ? incoming.email : (existing.email || "Not Available"),
-    phone: hasValue(incoming.phone) ? incoming.phone : (existing.phone || "Not Available"),
-    headline: hasValue(incoming.headline) ? incoming.headline : (existing.headline || "Not Available"),
-    company: hasValue(incoming.company) ? incoming.company : (existing.company || "Not Available"),
-    location: hasValue(incoming.location) ? incoming.location : (existing.location || "Not Available"),
-
-    photoUrl: incoming.photoUrl || existing.photoUrl || "",
-    profileUrl: incoming.profileUrl || existing.profileUrl || "",
-
+    name: isAvailable(incoming.name) ? incoming.name : existing.name,
+    photoUrl: isAvailable(incoming.photoUrl) ? incoming.photoUrl : existing.photoUrl,
+    designation: isAvailable(incoming.designation) ? incoming.designation : existing.designation,
+    company: isAvailable(incoming.company) ? incoming.company : existing.company,
+    location: isAvailable(incoming.location) ? incoming.location : existing.location,
+    city: isAvailable(incoming.city) ? incoming.city : existing.city,
+    country: isAvailable(incoming.country) ? incoming.country : existing.country,
+    email: isAvailable(incoming.email) ? incoming.email : existing.email,
+    personalEmail: incoming.personalEmail || existing.personalEmail || "",
+    phone: isAvailable(incoming.phone) ? incoming.phone : existing.phone,
+    allEmails: deduplicateContacts([...(existing.allEmails || []), ...(incoming.allEmails || [])], "email"),
+    allPhones: deduplicateContacts([...(existing.allPhones || []), ...(incoming.allPhones || [])], "phone"),
+    experiences: incoming.experiences && incoming.experiences.length > 0 ? incoming.experiences : (existing.experiences || []),
+    educations: incoming.educations && incoming.educations.length > 0 ? incoming.educations : (existing.educations || []),
+    skills: [...new Set([...(existing.skills || []), ...(incoming.skills || [])])],
+    profileUrl: isAvailable(incoming.profileUrl) ? incoming.profileUrl : existing.profileUrl,
+    createdAt: existing.createdAt || incoming.createdAt,
     updatedAt: new Date().toISOString()
   };
 }
 
+/**
+ * File I/O for database persistence
+ */
 async function readProfiles() {
   try {
-    const parsed = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
+    const content = await fs.readFile(DATA_FILE, "utf8");
+    const parsed = JSON.parse(content);
     return Array.isArray(parsed) ? parsed : [];
   } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
+    if (error.code === "ENOENT") {
+      await writeProfiles([]);
+      return [];
+    }
+    console.error("[Database] Read error:", error.message);
+    return [];
   }
 }
 
 async function writeProfiles(profiles) {
+  const tempFile = `${DATA_FILE}.tmp`;
   await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  const temporaryFile = `${DATA_FILE}.tmp`;
-  await fs.writeFile(temporaryFile, JSON.stringify(profiles, null, 2) + "\n", "utf8");
-  await fs.rename(temporaryFile, DATA_FILE);
+  await fs.writeFile(tempFile, JSON.stringify(profiles, null, 2), "utf8");
+  await fs.rename(tempFile, DATA_FILE);
 }
 
-function getCookie(req, name) {
-  const cookies = asText(req.headers.cookie).split(";").map((part) => part.trim());
-  const entry = cookies.find((part) => part.startsWith(name + "="));
-  return entry ? decodeURIComponent(entry.slice(name.length + 1)) : "";
-}
-
-function setSessionCookie(res, sessionId) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`);
-}
-
-function requireLinkedInConfig(req, res, next) {
-  if (!LINKEDIN_CLIENT_ID || !LINKEDIN_CLIENT_SECRET) {
-    return res.status(503).json({
-      code: "LINKEDIN_OAUTH_NOT_CONFIGURED",
-      message: "Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET in backend/.env before using LinkedIn Login."
-    });
-  }
-  next();
-}
-
-// --- Smart Email Finder & Verifier (Fast, Non-blocking, Zero Third-Party) ---
-function extractDomainCandidates(company) {
-  if (!company) return [];
-  
-  const cleaned = company
-    .replace(/\+\s*\d+\s*more/gi, "")
-    .replace(/\(.*?\)/g, "")
-    .replace(/\[.*?\]/g, "")
-    .replace(/\b(group of companies|group|pvt ltd|private limited|ltd|limited|inc|llc|corp|corporation|technologies|technology|solutions|services|enterprises|consultancy|consulting|holdings|systems|international|global|foundation|trust|llp|co|company)\b/gi, "")
-    .replace(/[^\w\s-]/g, "")
-    .trim()
-    .toLowerCase();
-
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return [];
-
-  const candidates = new Set();
-  const joined = words.join("");
-  const firstWord = words[0];
-  const acronym = words.length >= 2 ? words.map((w) => w[0]).join("") : "";
-
-  const stems = [joined, firstWord, acronym].filter((s) => s && s.length >= 2);
-
-  for (const stem of stems) {
-    candidates.add(`${stem}.com`);
-    candidates.add(`${stem}.in`);
-    candidates.add(`${stem}.co`);
-  }
-
-  return Array.from(candidates);
-}
-
-function generateCandidates(fullName, company, explicitDomain = "") {
-  const parts = fullName.toLowerCase().replace(/[^a-z\s]/g, "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return [];
-  const first = parts[0];
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-
-  let domains = [];
-  if (explicitDomain) {
-    domains.push(explicitDomain.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").trim());
-  } else {
-    domains = extractDomainCandidates(company);
-  }
-
-  if (domains.length === 0) return [];
-
-  const candidates = [];
-  for (const domain of domains) {
-    if (last) {
-      candidates.push({ email: `${first}.${last}@${domain}`, pattern: "first.last", domain });
-      candidates.push({ email: `${first}${last}@${domain}`, pattern: "firstlast", domain });
-      candidates.push({ email: `${first[0]}.${last}@${domain}`, pattern: "f.last", domain });
-      candidates.push({ email: `${first[0]}${last}@${domain}`, pattern: "flast", domain });
-      candidates.push({ email: `${first}.${last[0]}@${domain}`, pattern: "first.l", domain });
-    }
-    candidates.push({ email: `${first}@${domain}`, pattern: "first", domain });
-  }
-  return candidates;
-}
-
-async function checkMxFast(domain, timeoutMs = 1500) {
-  try {
-    const promise = dns.resolveMx(domain);
-    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("dns_timeout")), timeoutMs));
-    const mxRecords = await Promise.race([promise, timeout]);
-    if (mxRecords && mxRecords.length > 0) {
-      mxRecords.sort((a, b) => a.priority - b.priority);
-      return { domain, hasMx: true, host: mxRecords[0].exchange };
-    }
-    return { domain, hasMx: false };
-  } catch {
-    return { domain, hasMx: false };
-  }
-}
-
-async function verifyMxAndSmtp(email, host, timeoutMs = 1800) {
-  return new Promise((resolve) => {
-    let resolved = false;
-    let timer = null;
-
-    const finish = (result) => {
-      if (!resolved) {
-        resolved = true;
-        if (timer) clearTimeout(timer);
-        try { socket.destroy(); } catch (_) {}
-        resolve(result);
-      }
-    };
-
-    timer = setTimeout(() => {
-      finish({ email, status: "predicted", reason: "hard_timeout" });
-    }, timeoutMs);
-
-    const socket = net.createConnection(25, host);
-    socket.setTimeout(timeoutMs);
-
-    let step = 0;
-
-    socket.on("timeout", () => finish({ email, status: "predicted", reason: "socket_timeout" }));
-    socket.on("error", () => finish({ email, status: "predicted", reason: "port_blocked" }));
-    socket.on("close", () => finish({ email, status: "predicted", reason: "socket_closed" }));
-    socket.on("end", () => finish({ email, status: "predicted", reason: "socket_ended" }));
-
-    socket.on("data", (data) => {
-      const reply = data.toString();
-      const code = parseInt(reply.substring(0, 3), 10);
-
-      if (step === 0 && code === 220) {
-        step++;
-        socket.write("HELO mail.local\r\n");
-      } else if (step === 1 && code === 250) {
-        step++;
-        socket.write("MAIL FROM:<verify@mail.local>\r\n");
-      } else if (step === 2 && code === 250) {
-        step++;
-        socket.write(`RCPT TO:<${email}>\r\n`);
-      } else if (step === 3) {
-        if (code === 250) {
-          finish({ email, status: "deliverable", mxHost: host });
-        } else if (code >= 500) {
-          finish({ email, status: "undeliverable", mxHost: host, code });
-        } else {
-          finish({ email, status: "predicted", mxHost: host, code });
-        }
-      }
-    });
-  });
-}
-
-async function findEmail(name, company, domain = "") {
-  const candidates = generateCandidates(name, company, domain);
-  if (candidates.length === 0) {
-    return { success: false, message: "Could not generate candidates for this name and company." };
-  }
-
-  const distinctDomains = Array.from(new Set(candidates.map((c) => c.domain)));
-  
-  const mxChecks = await Promise.allSettled(
-    distinctDomains.slice(0, 6).map((d) => checkMxFast(d, 1500))
-  );
-
-  const validDomainMap = new Map();
-  for (const res of mxChecks) {
-    if (res.status === "fulfilled" && res.value.hasMx) {
-      validDomainMap.set(res.value.domain, res.value.host);
-    }
-  }
-
-  if (validDomainMap.size > 0) {
-    const validCandidates = candidates.filter((c) => validDomainMap.has(c.domain));
-    const testBatch = validCandidates.slice(0, 2);
-
-    for (const c of testBatch) {
-      const host = validDomainMap.get(c.domain);
-      const res = await verifyMxAndSmtp(c.email, host, 1800);
-      if (res.status === "deliverable") {
-        return {
-          success: true,
-          email: c.email,
-          status: "deliverable",
-          domain: c.domain,
-          note: "Mailbox verified deliverable via SMTP handshake."
-        };
-      }
-    }
-
-    const bestCandidate = validCandidates[0];
-    return {
-      success: true,
-      email: bestCandidate.email,
-      status: "predicted",
-      domain: bestCandidate.domain,
-      note: "Company domain verified (Active MX). Standard enterprise format matched."
-    };
-  }
-
-  const fallback = candidates[0];
-  return {
-    success: true,
-    email: fallback.email,
-    status: "predicted",
-    domain: fallback.domain,
-    note: "Pattern predicted from company name."
-  };
-}
-
+// ----------------------------------------------------
+// Health Route
+// ----------------------------------------------------
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", message: "LinkedIn Profile Viewer API is running" });
+  res.json({ status: "healthy", timestamp: new Date().toISOString() });
 });
 
-// Start LinkedIn's official OpenID Connect authorization-code flow.
-app.get("/auth/linkedin", requireLinkedInConfig, (req, res) => {
-  const state = crypto.randomBytes(24).toString("hex");
-  pendingStates.set(state, { createdAt: Date.now() });
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: LINKEDIN_CLIENT_ID,
-    redirect_uri: LINKEDIN_REDIRECT_URI,
-    state,
-    scope: "openid profile email"
-  });
-  res.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);
-});
+// ----------------------------------------------------
+// SignalHire Integration Routes
+// ----------------------------------------------------
 
-app.get("/auth/linkedin/callback", requireLinkedInConfig, async (req, res) => {
-  const state = asText(req.query.state);
-  const pending = pendingStates.get(state);
-  pendingStates.delete(state);
-  if (!state || !pending || Date.now() - pending.createdAt > 10 * 60 * 1000) {
-    return res.redirect(`${FRONTEND_URL}/?linkedin_auth=invalid_state`);
-  }
-  if (req.query.error || !req.query.code) {
-    return res.redirect(`${FRONTEND_URL}/?linkedin_auth=denied`);
-  }
-
+/**
+ * POST /api/profiles/signalhire
+ * Look up full candidate details from SignalHire Person API
+ */
+app.post("/api/profiles/signalhire", async (req, res) => {
   try {
-    const tokenResponse = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code: asText(req.query.code),
-        redirect_uri: LINKEDIN_REDIRECT_URI,
-        client_id: LINKEDIN_CLIENT_ID,
-        client_secret: LINKEDIN_CLIENT_SECRET
-      })
+    const { profileUrl } = req.body || {};
+    if (!profileUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "LinkedIn profileUrl is required."
+      });
+    }
+
+    const result = await searchSignalHire(profileUrl);
+    const credits = await getSignalHireCredits();
+
+    if (!result.success || !result.found) {
+      return res.status(200).json({
+        success: true,
+        found: false,
+        credits,
+        message: result.message || "Candidate not found in SignalHire."
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      found: true,
+      profile: result.profile,
+      credits
     });
-    const tokenData = await tokenResponse.json();
-    if (!tokenResponse.ok || !tokenData.access_token) {
-      console.error("LinkedIn token exchange failed:", tokenData.error || tokenData.error_description || tokenResponse.status);
-      return res.redirect(`${FRONTEND_URL}/?linkedin_auth=token_error`);
-    }
-
-    const userResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` }
-    });
-    const user = await userResponse.json();
-    if (!userResponse.ok || !user.sub) {
-      console.error("LinkedIn userinfo failed:", user.error || userResponse.status);
-      return res.redirect(`${FRONTEND_URL}/?linkedin_auth=profile_error`);
-    }
-
-    const sessionId = crypto.randomBytes(32).toString("hex");
-    sessions.set(sessionId, {
-      user: {
-        id: asText(user.sub),
-        linkedinMemberId: asText(user.sub),
-        name: asText(user.name || [user.given_name, user.family_name].filter(Boolean).join(" ")),
-        firstName: asText(user.given_name),
-        lastName: asText(user.family_name),
-        email: asText(user.email),
-        photoUrl: asText(user.picture),
-        source: "LinkedIn OpenID Connect"
-      },
-      accessToken: tokenData.access_token,
-      expiresAt: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
-    });
-    setSessionCookie(res, sessionId);
-    res.redirect(`${FRONTEND_URL}/?linkedin_auth=success`);
-  } catch (error) {
-    console.error("LinkedIn OAuth callback failed:", error);
-    res.redirect(`${FRONTEND_URL}/?linkedin_auth=error`);
-  }
-});
-
-app.get("/api/auth/me", (req, res) => {
-  const sessionId = getCookie(req, SESSION_COOKIE);
-  const session = sessions.get(sessionId);
-  if (!session || session.expiresAt < Date.now()) {
-    if (sessionId) sessions.delete(sessionId);
-    return res.status(401).json({ authenticated: false });
-  }
-  res.json({ authenticated: true, user: session.user });
-});
-
-app.post("/api/auth/save-my-profile", async (req, res, next) => {
-  try {
-    const sessionId = getCookie(req, SESSION_COOKIE);
-    const session = sessions.get(sessionId);
-    if (!session || session.expiresAt < Date.now()) {
-      return res.status(401).json({ message: "Please sign in with LinkedIn first." });
-    }
-    const profile = normalizeProfile({
-      ...session.user,
-      profileUrl: asText(req.body?.profileUrl),
-      source: "LinkedIn OpenID Connect"
-    });
-    const validationError = validateProfile(profile);
-    if (validationError) return res.status(400).json({ message: validationError });
-
-    const profiles = await readProfiles();
-    const existingAt = profiles.findIndex((item) =>
-      (profile.linkedinMemberId && item.linkedinMemberId === profile.linkedinMemberId) ||
-      (!item.linkedinMemberId &&
-        item.source === "LinkedIn OpenID Connect" &&
-        asText(item.name).toLowerCase() === profile.name.toLowerCase())
-    );
-    if (existingAt !== -1) {
-      const existing = profiles[existingAt];
-      const updatedProfile = {
-        ...existing,
-        ...profile,
-        id: existing.id,
-        email: profile.email !== "Not Available" ? profile.email : (existing.email || "Not Available"),
-        phone: profile.phone !== "Not Available" ? profile.phone : (existing.phone || "Not Available"),
-        photoUrl: profile.photoUrl || existing.photoUrl || "",
-        profileUrl: profile.profileUrl || existing.profileUrl || "",
-        headline: profile.headline !== "Not Available" ? profile.headline : (existing.headline || "Not Available"),
-        company: profile.company !== "Not Available" ? profile.company : (existing.company || "Not Available"),
-        location: profile.location !== "Not Available" ? profile.location : (existing.location || "Not Available"),
-        description: profile.description || existing.description || "",
-        experience: profile.experience || existing.experience || "",
-        education: profile.education || existing.education || "",
-        experiences: profile.experiences.length ? profile.experiences : (existing.experiences || []),
-        educations: profile.educations.length ? profile.educations : (existing.educations || []),
-        volunteerExperience: profile.volunteerExperience.length ? profile.volunteerExperience : (existing.volunteerExperience || []),
-        skills: profile.skills.length ? profile.skills : (existing.skills || []),
-        linkedinMemberId: profile.linkedinMemberId || existing.linkedinMemberId || ""
-      };
-      profiles[existingAt] = updatedProfile;
-      await writeProfiles(profiles);
-      return res.status(200).json(updatedProfile);
-    }
-    profiles.unshift(profile);
-    await writeProfiles(profiles);
-    res.status(201).json(profile);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/api/auth/logout", (req, res) => {
-  const sessionId = getCookie(req, SESSION_COOKIE);
-  if (sessionId) sessions.delete(sessionId);
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
-  res.json({ success: true });
-});
-
-app.post("/api/profiles/find-email", async (req, res) => {
-  try {
-    const name = asText(req.body?.name);
-    const company = asText(req.body?.company);
-    const domain = asText(req.body?.domain);
-
-    if (!name) {
-      return res.status(400).json({ success: false, message: "Profile name is required." });
-    }
-    if (!company && !domain) {
-      return res.status(400).json({ success: false, message: "Company name or domain is required." });
-    }
-
-    const result = await findEmail(name, company, domain);
-    res.json(result);
   } catch (err) {
-    console.error("Email finder error:", err);
-    res.status(500).json({ success: false, message: "Server error during email lookup." });
+    console.error("[SignalHire Route] Error:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "SignalHire enrichment failed."
+    });
   }
 });
 
-app.get("/api/profiles", async (_req, res, next) => {
+/**
+ * GET /api/signalhire/credits
+ * Get real-time SignalHire credit balance
+ */
+app.get(["/api/signalhire/credits", "/api/profiles/signalhire-credits"], async (_req, res) => {
   try {
-    res.json(await readProfiles());
+    const credits = await getSignalHireCredits();
+    return res.json({ success: true, credits });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// Profile CRUD Routes
+// ----------------------------------------------------
+
+/**
+ * GET /api/profiles
+ * Retrieve profiles with search and sorting
+ */
+app.get("/api/profiles", async (req, res, next) => {
+  try {
+    const profiles = await readProfiles();
+    const query = asText(req.query.search).toLowerCase();
+
+    let results = profiles;
+    if (query) {
+      results = profiles.filter((p) => {
+        const textToSearch = [
+          p.name,
+          p.designation,
+          p.company,
+          p.city,
+          p.country,
+          p.location,
+          p.email,
+          p.personalEmail,
+          p.phone,
+          ...(p.skills || [])
+        ].join(" ").toLowerCase();
+        return textToSearch.includes(query);
+      });
+    }
+
+    res.json(results);
   } catch (error) {
     next(error);
   }
 });
 
+/**
+ * GET /api/profiles/:id
+ */
 app.get("/api/profiles/:id", async (req, res, next) => {
   try {
     const profiles = await readProfiles();
     const profile = profiles.find((item) => String(item.id) === req.params.id);
-    if (!profile) return res.status(404).json({ message: "Profile not found." });
+    if (!profile) {
+      return res.status(404).json({ message: "Profile not found." });
+    }
     res.json(profile);
   } catch (error) {
     next(error);
   }
 });
 
-app.put("/api/profiles/:id", async (req, res, next) => {
-  try {
-    const profiles = await readProfiles();
-    const index = profiles.findIndex(
-      (item) => String(item.id) === req.params.id
-    );
-
-    if (index === -1) {
-      return res.status(404).json({ message: "Profile not found." });
-    }
-
-    const existing = profiles[index];
-
-    const updatedProfile = normalizeProfile(
-      { ...existing, ...req.body },
-      existing.id
-    );
-
-    const validationError = validateProfile(updatedProfile);
-    if (validationError) {
-      return res.status(400).json({ message: validationError });
-    }
-
-    profiles[index] = {
-      ...existing,
-      ...updatedProfile,
-      id: existing.id
-    };
-
-    await writeProfiles(profiles);
-
-    res.json({
-      success: true,
-      message: "Profile updated successfully.",
-      profile: profiles[index]
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.delete("/api/profiles/:id", async (req, res, next) => {
-  try {
-    const profiles = await readProfiles();
-    const index = profiles.findIndex(
-      (item) => String(item.id) === req.params.id
-    );
-
-    if (index === -1) {
-      return res.status(404).json({ message: "Profile not found." });
-    }
-
-    const deletedProfile = profiles[index];
-    profiles.splice(index, 1);
-
-    await writeProfiles(profiles);
-
-    res.json({
-      success: true,
-      message: "Profile deleted successfully.",
-      id: deletedProfile.id
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/api/profiles/extract", async (req, res) => {
-  const profileUrl = asText(req.body?.profileUrl);
-  if (!/^https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_%.-]+\/?(?:\?.*)?$/i.test(profileUrl)) {
-    return res.status(400).json({ message: "Please provide a valid LinkedIn profile URL." });
-  }
-  return res.status(503).json({
-    code: "PROFILE_PROVIDER_NOT_CONFIGURED",
-    message: "LinkedIn OpenID Connect only provides the signed-in member's basic profile. It does not authorize extraction of other members' profiles. An approved API/provider for that data is required."
-  });
-});
-
+/**
+ * POST /api/profiles
+ * Create or merge profile
+ */
 app.post("/api/profiles", async (req, res, next) => {
   try {
     const profile = normalizeProfile(req.body);
@@ -656,32 +413,22 @@ app.post("/api/profiles", async (req, res, next) => {
     }
 
     const profiles = await readProfiles();
-    const duplicateAt = duplicateIndex(profiles, profile);
+    const dupIdx = duplicateIndex(profiles, profile);
 
-    // Existing profile: update instead of returning 409
-    if (duplicateAt !== -1) {
-      const existing = profiles[duplicateAt];
-
-      const updatedProfile = mergeExistingProfile(
-        existing,
-        profile
-      );
-
-      profiles[duplicateAt] = updatedProfile;
-
+    if (dupIdx !== -1) {
+      const merged = mergeExistingProfile(profiles[dupIdx], profile);
+      profiles[dupIdx] = merged;
       await writeProfiles(profiles);
 
       return res.status(200).json({
         success: true,
         action: "updated",
         message: "Existing profile updated successfully.",
-        profile: updatedProfile
+        profile: merged
       });
     }
 
-    // New profile: insert
     profiles.unshift(profile);
-
     await writeProfiles(profiles);
 
     return res.status(201).json({
@@ -690,62 +437,116 @@ app.post("/api/profiles", async (req, res, next) => {
       message: "Profile saved successfully.",
       profile
     });
-
   } catch (error) {
     next(error);
   }
 });
 
+/**
+ * PUT /api/profiles/:id
+ */
+app.put("/api/profiles/:id", async (req, res, next) => {
+  try {
+    const profiles = await readProfiles();
+    const index = profiles.findIndex((item) => String(item.id) === req.params.id);
+
+    if (index === -1) {
+      return res.status(404).json({ message: "Profile not found." });
+    }
+
+    const updated = normalizeProfile({ ...profiles[index], ...req.body }, profiles[index].id);
+    const validationError = validateProfile(updated);
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
+
+    profiles[index] = updated;
+    await writeProfiles(profiles);
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully.",
+      profile: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/profiles/:id
+ */
+app.delete("/api/profiles/:id", async (req, res, next) => {
+  try {
+    const profiles = await readProfiles();
+    const filtered = profiles.filter((item) => String(item.id) !== req.params.id);
+
+    if (filtered.length === profiles.length) {
+      return res.status(404).json({ message: "Profile not found." });
+    }
+
+    await writeProfiles(filtered);
+    res.json({ success: true, message: "Profile deleted successfully." });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/profiles/import
+ * Bulk import profiles
+ */
 app.post("/api/profiles/import", async (req, res, next) => {
   try {
-    const incoming = Array.isArray(req.body) ? req.body : req.body?.profiles;
-    if (!Array.isArray(incoming) || incoming.length === 0) {
-      return res.status(400).json({ message: "Provide a non-empty profiles array." });
-    }
-    if (incoming.length > 500) {
-      return res.status(413).json({ message: "Import is limited to 500 profiles per request." });
+    const incomingList = Array.isArray(req.body)
+      ? req.body
+      : Array.isArray(req.body?.profiles)
+      ? req.body.profiles
+      : [];
+
+    if (incomingList.length === 0) {
+      return res.status(400).json({ message: "An array of profiles is required for import." });
     }
 
-    const profiles = await readProfiles();
-    const added = [];
-    const duplicates = [];
-    const errors = [];
+    const existingProfiles = await readProfiles();
+    let importedCount = 0;
+    let updatedCount = 0;
 
-    incoming.forEach((item, index) => {
-      const candidate = normalizeProfile(item, Date.now() + index);
-      const validationError = validateProfile(candidate);
-      if (validationError) {
-        errors.push({ row: index + 1, message: validationError });
-        return;
+    for (const raw of incomingList) {
+      const normalized = normalizeProfile(raw, Date.now() + Math.floor(Math.random() * 1000));
+      if (validateProfile(normalized)) continue;
+
+      const dupIdx = duplicateIndex(existingProfiles, normalized);
+      if (dupIdx !== -1) {
+        existingProfiles[dupIdx] = mergeExistingProfile(existingProfiles[dupIdx], normalized);
+        updatedCount++;
+      } else {
+        existingProfiles.push(normalized);
+        importedCount++;
       }
-      const duplicateAt = duplicateIndex([...profiles, ...added], candidate);
-      if (duplicateAt !== -1) {
-        duplicates.push({ row: index + 1, name: candidate.name });
-        return;
-      }
-      added.push(candidate);
-    });
-
-    if (added.length) {
-      await writeProfiles([...added, ...profiles]);
     }
-    res.status(200).json({
-      imported: added.length,
-      duplicates: duplicates.length,
-      failed: errors.length,
-      profiles: added,
-      duplicateRows: duplicates,
-      errors
+
+    await writeProfiles(existingProfiles);
+
+    res.json({
+      success: true,
+      imported: importedCount,
+      updated: updatedCount,
+      total: existingProfiles.length
     });
   } catch (error) {
     next(error);
   }
 });
 
-app.use((error, _req, res, _next) => {
-  console.error(error);
-  const status = error.message === "Origin is not allowed by CORS." ? 403 : 500;
-  res.status(status).json({ message: status === 403 ? error.message : "Server error while processing the request." });
+// Error handling middleware
+app.use((err, _req, res, _next) => {
+  console.error("[Server Error]:", err);
+  res.status(500).json({
+    message: err.message || "Internal server error occurred."
+  });
 });
 
-app.listen(PORT, () => console.log(`API running at http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`API running at http://localhost:${PORT}`);
+});

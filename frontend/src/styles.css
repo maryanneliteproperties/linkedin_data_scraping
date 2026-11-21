@@ -389,3 +389,20 @@ td:nth-child(1) {
     width: 100%;
   }
 }
+
+/* View details button */
+.viewBtn {
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: 600 12px Inter, sans-serif;
+  cursor: pointer;
+  background: #f0fdf4;
+  color: #166534;
+  transition: all 0.15s ease;
+}
+
+.viewBtn:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
