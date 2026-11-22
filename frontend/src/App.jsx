@@ -4,6 +4,44 @@ import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, Download
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
+function formatListValue(item) {
+  if (!item) return "";
+  if (typeof item === "string") return item.trim();
+  if (typeof item === "object") {
+    const name = item.name || item.title || item.position || item.degree || "";
+    const extra = item.authority || item.issuer || item.organization || item.proficiency || item.publisher || "";
+    if (name && extra) return `${String(name).trim()} (${String(extra).trim()})`;
+    if (name) return String(name).trim();
+    for (const val of Object.values(item)) {
+      if (typeof val === "string" && val.trim() && !val.startsWith("http")) return val.trim();
+    }
+  }
+  return String(item);
+}
+
+function renderPills(data, max = 2) {
+  if (!data) return <span className="emptyCellText">Not Available</span>;
+  const list = Array.isArray(data)
+    ? data
+    : (typeof data === "object" ? [data] : (typeof data === "string" && data.trim() ? [data.trim()] : []));
+  const formatted = list.map(formatListValue).filter(Boolean);
+  if (formatted.length === 0) {
+    return <span className="emptyCellText">Not Available</span>;
+  }
+  return (
+    <div className="tablePillList">
+      {formatted.slice(0, max).map((item, idx) => (
+        <span key={idx} className="tablePillBadge" title={item}>{item}</span>
+      ))}
+      {formatted.length > max && (
+        <span className="tablePillCount" title={formatted.slice(max).join(", ")}>
+          +{formatted.length - max}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [profiles, setProfiles] = useState([]);
   const [search, setSearch] = useState("");
@@ -89,8 +127,9 @@ export default function App() {
     const term = search.toLowerCase().trim();
     if (!term) return profiles;
     return profiles.filter((profile) => [
-      profile.name, profile.email, profile.headline, profile.company, profile.location,
-      profile.description, profile.phone, ...(profile.skills || [])
+      profile.name, profile.email, profile.headline, profile.headLine, profile.company, profile.location,
+      profile.description, profile.phone, profile.gender, ...(profile.skills || []),
+      ...(profile.language || []), ...(profile.certification || []), ...(profile.project || [])
     ].join(" ").toLowerCase().includes(term));
   }, [profiles, search]);
 
@@ -351,6 +390,13 @@ async function confirmDelete() {
             <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
               🏢 {viewingProfile.company || "Not Available"} • 📍 {[viewingProfile.city, viewingProfile.country].filter(c => c && c !== "Not Available").join(", ") || viewingProfile.location || "Not Available"}
             </p>
+            <div style={{ display: "flex", gap: "10px", marginTop: "6px", fontSize: "12px", color: "#334155" }}>
+              <span><strong>Gender:</strong> {viewingProfile.gender || "Not Available"}</span>
+              <span>•</span>
+              <span><strong>Experience:</strong> {viewingProfile.experienceYears ? `${viewingProfile.experienceYears} yr(s)` : "Not Available"}</span>
+              <span>•</span>
+              <span><strong>Headline:</strong> {viewingProfile.headLine || "Not Available"}</span>
+            </div>
           </div>
         </div>
 
@@ -636,23 +682,38 @@ async function confirmDelete() {
 
 
         <div className="tableWrap"><table><thead><tr>
-      <th style={{ width: "70px" }}>PHOTO</th>
-      <th>NAME</th>
-      <th>DESIGNATION</th>
-      <th>COMPANY</th>
-      <th>LOCATION</th>
-      <th>EMAIL</th>
-      <th>PHONE</th>
-      {/* <th>BACKGROUND</th> */}
-      <th style={{ width: "170px" }}>ACTION</th>
+      <th style={{ width: "65px", minWidth: "65px" }}>PHOTO</th>
+      <th style={{ width: "160px", minWidth: "160px" }}>NAME</th>
+      <th style={{ width: "100px", minWidth: "100px" }}>GENDER</th>
+      <th style={{ width: "110px", minWidth: "110px" }}>EXP YEARS</th>
+      <th style={{ width: "220px", minWidth: "220px" }}>HEADLINE</th>
+      <th style={{ width: "180px", minWidth: "180px" }}>DESIGNATION</th>
+      <th style={{ width: "150px", minWidth: "150px" }}>COMPANY</th>
+      <th style={{ width: "160px", minWidth: "160px" }}>LOCATION</th>
+      <th style={{ width: "210px", minWidth: "210px" }}>EMAIL</th>
+      <th style={{ width: "140px", minWidth: "140px" }}>PHONE</th>
+      <th style={{ width: "260px", minWidth: "260px" }}>EXPERIENCE</th>
+      <th style={{ width: "260px", minWidth: "260px" }}>EDUCATION</th>
+      <th style={{ width: "220px", minWidth: "220px" }}>SKILLS</th>
+      <th style={{ width: "160px", minWidth: "160px" }}>LANGUAGE</th>
+      <th style={{ width: "180px", minWidth: "180px" }}>COURSE</th>
+      <th style={{ width: "200px", minWidth: "200px" }}>PROJECT</th>
+      <th style={{ width: "200px", minWidth: "200px" }}>CERTIFICATION</th>
+      <th style={{ width: "160px", minWidth: "160px" }}>PATENT</th>
+      <th style={{ width: "180px", minWidth: "180px" }}>PUBLICATION</th>
+      <th style={{ width: "180px", minWidth: "180px" }}>HONOR AWARD</th>
+      <th style={{ width: "180px", minWidth: "180px" }}>ORGANIZATION</th>
+      <th style={{ width: "130px", minWidth: "130px" }}>LINKEDIN URL</th>
+      <th style={{ width: "170px", minWidth: "170px" }}>ACTION</th>
     </tr></thead>
     <tbody>{loading ? (
-      <tr><td colSpan="9" className="empty">Loading profiles...</td></tr>
+      <tr><td colSpan="23" className="empty">Loading profiles...</td></tr>
     ) : filtered.length === 0 ? (
-      <tr><td colSpan="9" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
+      <tr><td colSpan="23" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
     ) : (
       paginatedProfiles.map((profile) => (
         <tr key={profile.id}>
+          {/* 1. PHOTO */}
           <td>
             {profile.photoUrl && profile.photoUrl !== "Not Available" ? (
               <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/>
@@ -660,31 +721,203 @@ async function confirmDelete() {
               <span className="notAvailablePhoto">Not Available</span>
             )}
           </td>
-          <td><strong>{profile.name || "Not Available"}</strong></td>
-          <td>{profile.designation || profile.headline || "Not Available"}</td>
-          <td>{profile.company || "Not Available"}</td>
-          <td>{[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}</td>
+
+          {/* 2. NAME */}
           <td>
-            <div>{profile.email || "Not Available"}</div>
-            {profile.personalEmail && profile.personalEmail !== profile.email ? (
-              <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px" }}>
-                Personal: {profile.personalEmail}
-              </div>
-            ) : null}
-          </td>
-          <td>{profile.phone || "Not Available"}</td>
-          {/* <td>
-            <div style={{ fontSize: "12px", color: "#334155" }}>
-              {profile.experiences?.length ? `${profile.experiences.length} Exps` : "No Exp"} • {profile.skills?.length ? `${profile.skills.length} Skills` : "No Skills"}
+            <div className="tableNameWrap">
+              <strong className="profileNameText">{profile.name || "Not Available"}</strong>
             </div>
-          </td> */}
+          </td>
+
+          {/* 3. GENDER */}
+          <td>
+            {profile.gender && profile.gender !== "Not Available" ? (
+              <span className="tableSolidText">{profile.gender}</span>
+            ) : (
+              <span className="emptyCellText">Not Available</span>
+            )}
+          </td>
+
+          {/* 4. EXP YEARS */}
+          <td>
+            {profile.experienceYears !== null && profile.experienceYears !== undefined && profile.experienceYears !== "" && profile.experienceYears !== "Not Available" ? (
+              <span className="tableSolidText">{profile.experienceYears} yr{Number(profile.experienceYears) === 1 ? "" : "s"}</span>
+            ) : (
+              <span className="emptyCellText">Not Available</span>
+            )}
+          </td>
+
+          {/* 5. HEADLINE */}
+          <td>
+            {profile.headLine && profile.headLine !== "Not Available" ? (
+              <div className="tableHeadlineText">{profile.headLine}</div>
+            ) : (
+              <span className="emptyCellText">Not Available</span>
+            )}
+          </td>
+
+          {/* 6. DESIGNATION */}
+          <td>
+            <div className="tableDesignationText">
+              {profile.designation || profile.headline || "Not Available"}
+            </div>
+          </td>
+
+          {/* 7. COMPANY */}
+          <td>
+            <div className="tableCompanyWrap">
+              <strong className="tableCompanyText">{profile.company || "Not Available"}</strong>
+              {profile.experiences?.[0]?.industry ? (
+                <div className="tableSubMeta">{profile.experiences[0].industry}</div>
+              ) : null}
+            </div>
+          </td>
+
+          {/* 8. LOCATION */}
+          <td>
+            <div className="tableLocationText">
+              {[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}
+            </div>
+          </td>
+
+          {/* 9. EMAIL */}
+          <td>
+            <div className="tableContactCol">
+              <div className="tableEmailPrimary">{profile.email || "Not Available"}</div>
+              {profile.personalEmail && profile.personalEmail !== profile.email ? (
+                <div className="tableEmailSecondary">
+                  Personal: {profile.personalEmail}
+                </div>
+              ) : null}
+            </div>
+          </td>
+
+          {/* 10. PHONE */}
+          <td>
+            <div className="tablePhonePrimary">{profile.phone || "Not Available"}</div>
+          </td>
+
+          {/* 11. EXPERIENCE */}
+          <td>
+            {profile.experiences && profile.experiences.length > 0 ? (
+              <div className="tableCellList">
+                {profile.experiences.map((exp, idx) => (
+                  <div key={idx} className="tableCellListItem">
+                    <div className="tableItemHead">
+                      <strong>{exp.position || "Position"}</strong>
+                      {exp.company && exp.company !== "Not Available" ? ` @ ${exp.company}` : ""}
+                    </div>
+                    <div className="tableItemSub">
+                      {[exp.started, exp.ended].filter(Boolean).join(" - ") || (exp.current ? "Present" : "")}
+                      {exp.location ? ` • ${exp.location}` : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="emptyCellText">Not Available</span>
+            )}
+          </td>
+
+          {/* 12. EDUCATION */}
+          <td>
+            {profile.educations && profile.educations.length > 0 ? (
+              <div className="tableCellList">
+                {profile.educations.map((edu, idx) => (
+                  <div key={idx} className="tableCellListItem">
+                    <div className="tableItemHead">
+                      <strong>{edu.degree || "Degree"}</strong>
+                      {edu.faculty ? ` in ${edu.faculty.trim()}` : ""}
+                    </div>
+                    <div className="tableItemSub">
+                      {edu.university || "University"}
+                      {[edu.startedYear, edu.endedYear].filter(Boolean).length > 0
+                        ? ` (${[edu.startedYear, edu.endedYear].filter(Boolean).join(" - ")})`
+                        : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="emptyCellText">Not Available</span>
+            )}
+          </td>
+
+          {/* 13. SKILLS */}
+          <td>
+            {profile.skills && profile.skills.length > 0 ? (
+              <div className="tableSkillsCell">
+                <div className="tableSkillChips">
+                  {profile.skills.slice(0, 4).map((skill, idx) => (
+                    <span key={idx} className="tableSkillChip">{skill}</span>
+                  ))}
+                </div>
+                {profile.skills.length > 4 && (
+                  <button
+                    type="button"
+                    className="tableMoreBtn"
+                    onClick={() => setViewingProfile(profile)}
+                    title="Click to view all skills"
+                  >
+                    +{profile.skills.length - 4} more
+                  </button>
+                )}
+              </div>
+            ) : (
+              <span className="emptyCellText">Not Available</span>
+            )}
+          </td>
+
+          {/* 14. LANGUAGE */}
+          <td>{renderPills(profile.language || profile.languages, 3)}</td>
+
+          {/* 15. COURSE */}
+          <td>{renderPills(profile.course || profile.courses, 3)}</td>
+
+          {/* 16. PROJECT */}
+          <td>{renderPills(profile.project || profile.projects, 2)}</td>
+
+          {/* 17. CERTIFICATION */}
+          <td>{renderPills(profile.certification || profile.certifications, 2)}</td>
+
+          {/* 18. PATENT */}
+          <td>{renderPills(profile.patent || profile.patents, 2)}</td>
+
+          {/* 19. PUBLICATION */}
+          <td>{renderPills(profile.publication || profile.publications, 2)}</td>
+
+          {/* 20. HONOR AWARD */}
+          <td>{renderPills(profile.honorAward || profile.honorAwards || profile.honors, 2)}</td>
+
+          {/* 21. ORGANIZATION */}
+          <td>{renderPills(profile.organization || profile.organizations, 2)}</td>
+
+          {/* 22. LINKEDIN URL */}
+          <td>
+            {profile.profileUrl && profile.profileUrl !== "Not Available" ? (
+              <a
+                href={profile.profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tableLinkedinLink"
+                title={profile.profileUrl}
+              >
+                <Linkedin size={13} />
+                <span>Profile ↗</span>
+              </a>
+            ) : (
+              <span className="emptyCellText">Not Available</span>
+            )}
+          </td>
+
+          {/* 23. ACTION */}
           <td>
             <div className="actionButtons">
               <button
                 className="viewBtn"
                 type="button"
                 onClick={() => setViewingProfile(profile)}
-                title="View full details"
+                title="View full candidate details"
               >
                 View
               </button>
@@ -698,7 +931,7 @@ async function confirmDelete() {
               <button
                 className="deleteBtn"
                 type="button"
-                onClick={() => deleteProfile(profile)}
+                onClick={() => setDeletingProfile(profile)}
               >
                 Delete
               </button>
@@ -706,8 +939,7 @@ async function confirmDelete() {
           </td>
         </tr>
       ))
-    )}</tbody>
-    </table></div>
+    )}</tbody></table></div>
         <div className="paginationContainer">
           <div className="paginationInfo">
             Showing <strong>{firstItem}-{lastItem}</strong> of{" "}

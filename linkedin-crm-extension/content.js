@@ -1266,12 +1266,27 @@
                   experiences: Array.isArray(sp.experiences) ? sp.experiences : [],
                   educations: Array.isArray(sp.educations) ? sp.educations : [],
                   skills: Array.isArray(sp.skills) ? sp.skills : [],
+                  gender: sp.gender || "Not Available",
+                  experienceYears: sp.experienceYears ?? "Not Available",
+                  headLine: sp.headLine || "Not Available",
+                  language: Array.isArray(sp.language) ? sp.language : [],
+                  course: Array.isArray(sp.course) ? sp.course : [],
+                  project: Array.isArray(sp.project) ? sp.project : [],
+                  certification: Array.isArray(sp.certification) ? sp.certification : [],
+                  patent: Array.isArray(sp.patent) ? sp.patent : [],
+                  publication: Array.isArray(sp.publication) ? sp.publication : [],
+                  honorAward: Array.isArray(sp.honorAward) ? sp.honorAward : [],
+                  organization: Array.isArray(sp.organization) ? sp.organization : [],
+                  rawCandidate: sp.rawCandidate || null,
                   profileUrl: sp.profileUrl || profileUrl
                 };
 
                 await saveProfileToLocalStorage(cachedProfile);
                 contactRevealed = true;
                 render();
+
+                // Auto-sync enriched profile to backend
+                sendProfileToBackend(cachedProfile).catch(() => {});
 
                 const newMsg = panel?.querySelector(".acc-message");
                 if (newMsg) {
@@ -1375,24 +1390,40 @@
         try {
           const current = getProfile();
           const stored = await getProfileFromLocalStorage(current.profileUrl);
+          const base = cachedProfile || stored || {};
 
           const finalProfile = {
-            name: current.name && current.name !== "Not Available" ? current.name : (stored?.name || "Not Available"),
-            photoUrl: current.photoUrl || current.avatar || stored?.photoUrl || "Not Available",
-            designation: current.designation || current.headline || stored?.designation || "Not Available",
-            company: current.company || stored?.company || "Not Available",
-            location: current.location || stored?.location || "Not Available",
-            city: current.city || stored?.city || "Not Available",
-            country: current.country || stored?.country || "Not Available",
-            email: current.email || stored?.email || "Not Available",
-            personalEmail: current.personalEmail || stored?.personalEmail || "",
-            phone: current.phone || stored?.phone || "Not Available",
-            allEmails: current.allEmails?.length ? current.allEmails : (stored?.allEmails || []),
-            allPhones: current.allPhones?.length ? current.allPhones : (stored?.allPhones || []),
-            experiences: current.experiences?.length ? current.experiences : (stored?.experiences || []),
-            educations: current.educations?.length ? current.educations : (stored?.educations || []),
-            skills: current.skills?.length ? current.skills : (stored?.skills || []),
-            profileUrl: current.profileUrl || location.href
+            name: current.name && current.name !== "Not Available" ? current.name : (base.name || stored?.name || "Not Available"),
+            photoUrl: current.photoUrl || current.avatar || base.photoUrl || stored?.photoUrl || "Not Available",
+            designation: current.designation || current.headline || base.designation || base.headLine || stored?.designation || "Not Available",
+            company: current.company || base.company || stored?.company || "Not Available",
+            location: current.location || base.location || stored?.location || "Not Available",
+            city: current.city || base.city || stored?.city || "Not Available",
+            country: current.country || base.country || stored?.country || "Not Available",
+            email: current.email && current.email !== "Not Available" ? current.email : (base.email || stored?.email || "Not Available"),
+            personalEmail: current.personalEmail || base.personalEmail || stored?.personalEmail || "",
+            phone: current.phone && current.phone !== "Not Available" ? current.phone : (base.phone || stored?.phone || "Not Available"),
+            allEmails: current.allEmails?.length ? current.allEmails : (base.allEmails?.length ? base.allEmails : (stored?.allEmails || [])),
+            allPhones: current.allPhones?.length ? current.allPhones : (base.allPhones?.length ? base.allPhones : (stored?.allPhones || [])),
+            experiences: current.experiences?.length ? current.experiences : (base.experiences?.length ? base.experiences : (stored?.experiences || [])),
+            educations: current.educations?.length ? current.educations : (base.educations?.length ? base.educations : (stored?.educations || [])),
+            skills: current.skills?.length ? current.skills : (base.skills?.length ? base.skills : (stored?.skills || [])),
+            gender: base.gender || stored?.gender || "Not Available",
+            experienceYears: base.experienceYears ?? stored?.experienceYears ?? "Not Available",
+            headLine: base.headLine || current.headline || stored?.headLine || "Not Available",
+            language: base.language?.length ? base.language : (stored?.language || []),
+            course: base.course?.length ? base.course : (stored?.course || []),
+            project: base.project?.length ? base.project : (stored?.project || []),
+            certification: base.certification?.length ? base.certification : (base.certifications?.length ? base.certifications : (stored?.certification || stored?.certifications || [])),
+            patent: base.patent?.length ? base.patent : (stored?.patent || []),
+            publication: base.publication?.length ? base.publication : (stored?.publication || []),
+            honorAward: base.honorAward?.length ? base.honorAward : (stored?.honorAward || []),
+            organization: base.organization?.length ? base.organization : (stored?.organization || []),
+            social: base.social?.length ? base.social : (stored?.social || []),
+            rawCandidate: base.rawCandidate || stored?.rawCandidate || null,
+            uid: base.uid || stored?.uid || "",
+            source: base.source || stored?.source || "LinkedIn CRM",
+            profileUrl: current.profileUrl || base.profileUrl || stored?.profileUrl || location.href
           };
 
           cachedProfile = finalProfile;

@@ -9,7 +9,8 @@ import {
   searchSignalHire,
   getSignalHireCredits,
   parseLocation,
-  deduplicateContacts
+  deduplicateContacts,
+  normalizeNamedArray
 } from "./services/signalhire.js";
 
 dotenv.config();
@@ -51,9 +52,11 @@ const asRecords = (value) => (Array.isArray(value) ? value.filter((i) => i && ty
  * Guarantee "Not Available" for missing fields, with no guesswork and no duplicates.
  */
 export function normalizeProfile(input, id = Date.now()) {
-  const source = input.userProfile && typeof input.userProfile === "object"
+  const source = (input.candidate && typeof input.candidate === "object")
+    ? input.candidate
+    : (input.userProfile && typeof input.userProfile === "object")
     ? input.userProfile
-    : input.profile && typeof input.profile === "object"
+    : (input.profile && typeof input.profile === "object")
     ? input.profile
     : input;
 
@@ -131,7 +134,13 @@ export function normalizeProfile(input, id = Date.now()) {
     ended: asText(item.ended || item.endDate || (item.current ? "Present" : "")),
     current: Boolean(item.current),
     summary: asText(item.summary || item.description),
-    location: asText(item.location)
+    location: asText(item.location),
+    companyUrl: asText(item.companyUrl),
+    companyLogo: asText(item.companyLogo),
+    companySize: asText(item.companySize),
+    staffCount: item.staffCount ?? null,
+    industry: asText(item.industry),
+    website: asText(item.website)
   }));
 
   // 6. Education: Education Details
@@ -149,7 +158,8 @@ export function normalizeProfile(input, id = Date.now()) {
       degree: degreeStr || "Not Available",
       faculty: asText(item.faculty || item.fieldOfStudy || item.field),
       startedYear: asText(item.startedYear || item.startYear),
-      endedYear: asText(item.endedYear || item.endYear)
+      endedYear: asText(item.endedYear || item.endYear),
+      url: asText(item.url)
     };
   });
 
@@ -165,10 +175,32 @@ export function normalizeProfile(input, id = Date.now()) {
   const rawProfileUrl = asText(source.profileUrl || source.linkedinUrl || input.profileUrl || input.linkedinUrl);
   const profileUrl = rawProfileUrl || "Not Available";
 
+  // 9. Additional Candidate Fields
+  const rawCandidate = source.rawCandidate || input.rawCandidate || (source.candidate || null);
+  const gender = asText(source.gender || input.gender || rawCandidate?.gender) || "Not Available";
+  const rawExpYears = source.experienceYears ?? input.experienceYears ?? rawCandidate?.experienceYears;
+  const experienceYears = (rawExpYears !== null && rawExpYears !== undefined && rawExpYears !== "" && rawExpYears !== "Not Available")
+    ? rawExpYears
+    : "Not Available";
+  const headLine = asText(source.headLine || source.headline || input.headLine || input.headline || rawCandidate?.headLine) || "Not Available";
+
+  const language = normalizeNamedArray(source.language || source.languages || input.language || input.languages || rawCandidate?.language || rawCandidate?.languages);
+  const course = normalizeNamedArray(source.course || source.courses || input.course || input.courses || rawCandidate?.course || rawCandidate?.courses);
+  const project = normalizeNamedArray(source.project || source.projects || input.project || input.projects || rawCandidate?.project || rawCandidate?.projects);
+  const certification = normalizeNamedArray(source.certification || source.certifications || input.certification || input.certifications || rawCandidate?.certification || rawCandidate?.certifications);
+  const patent = normalizeNamedArray(source.patent || source.patents || input.patent || input.patents || rawCandidate?.patent || rawCandidate?.patents);
+  const publication = normalizeNamedArray(source.publication || source.publications || input.publication || input.publications || rawCandidate?.publication || rawCandidate?.publications);
+  const honorAward = normalizeNamedArray(source.honorAward || source.honorAwards || input.honorAward || input.honorAwards || rawCandidate?.honorAward || rawCandidate?.honorAwards || rawCandidate?.honors);
+  const organization = normalizeNamedArray(source.organization || source.organizations || input.organization || input.organizations || rawCandidate?.organization || rawCandidate?.organizations);
+
   return {
     id,
+    uid: asText(source.uid || input.uid),
     name,
     photoUrl,
+    gender,
+    experienceYears,
+    headLine,
     designation,
     company,
     location: locationStr || "Not Available",
@@ -182,7 +214,17 @@ export function normalizeProfile(input, id = Date.now()) {
     experiences,
     educations,
     skills,
+    language,
+    course,
+    project,
+    certification,
+    patent,
+    publication,
+    honorAward,
+    organization,
+    social: Array.isArray(source.social) ? source.social : (Array.isArray(input.social) ? input.social : []),
     profileUrl,
+    rawCandidate: rawCandidate || null,
     source: asText(source.source || input.source) || "LinkedIn CRM",
     createdAt: asText(source.createdAt || input.createdAt) || new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -206,20 +248,27 @@ function validateProfile(profile) {
  * Find index of duplicate profile (matches by LinkedIn URL or by Name + Company)
  */
 function duplicateIndex(profiles, candidate) {
-  const targetUrl = asText(candidate.profileUrl).toLowerCase().replace(/\/+$/, "");
-  const targetName = asText(candidate.name).toLowerCase();
-  const targetCompany = asText(candidate.company).toLowerCase();
+  const cleanUrl = (u) => String(u || "").toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/\/+$/, "").split("?")[0];
+  const targetUrl = cleanUrl(candidate.profileUrl);
+  const targetName = String(candidate.name || "").toLowerCase().trim();
+  const targetUid = String(candidate.uid || "").trim();
 
   return profiles.findIndex((item) => {
-    const itemUrl = asText(item.profileUrl).toLowerCase().replace(/\/+$/, "");
+    if (targetUid && item.uid && targetUid === item.uid) return true;
+
+    const itemUrl = cleanUrl(item.profileUrl);
     if (targetUrl && targetUrl !== "not available" && itemUrl && itemUrl !== "not available") {
       if (itemUrl === targetUrl) return true;
+      const targetSlug = targetUrl.match(/\/in\/([^/]+)/)?.[1];
+      const itemSlug = itemUrl.match(/\/in\/([^/]+)/)?.[1];
+      if (targetSlug && itemSlug && targetSlug === itemSlug) return true;
     }
-    const itemName = asText(item.name).toLowerCase();
-    const itemCompany = asText(item.company).toLowerCase();
-    if (targetName && targetCompany && targetCompany !== "not available") {
-      if (itemName === targetName && itemCompany === targetCompany) return true;
+
+    const itemName = String(item.name || "").toLowerCase().trim();
+    if (targetName && targetName !== "not available" && itemName && itemName !== "not available") {
+      if (itemName === targetName && targetName.length > 3) return true;
     }
+
     return false;
   });
 }
@@ -249,6 +298,22 @@ function mergeExistingProfile(existing, incoming) {
     experiences: incoming.experiences && incoming.experiences.length > 0 ? incoming.experiences : (existing.experiences || []),
     educations: incoming.educations && incoming.educations.length > 0 ? incoming.educations : (existing.educations || []),
     skills: [...new Set([...(existing.skills || []), ...(incoming.skills || [])])],
+    social: incoming.social && incoming.social.length > 0 ? incoming.social : (existing.social || []),
+    gender: isAvailable(incoming.gender) ? incoming.gender : (existing.gender || "Not Available"),
+    experienceYears: (incoming.experienceYears !== "Not Available" && incoming.experienceYears !== null && incoming.experienceYears !== undefined)
+      ? incoming.experienceYears
+      : (existing.experienceYears ?? "Not Available"),
+    headLine: isAvailable(incoming.headLine) ? incoming.headLine : (existing.headLine || "Not Available"),
+    language: incoming.language && incoming.language.length > 0 ? incoming.language : (existing.language || []),
+    course: incoming.course && incoming.course.length > 0 ? incoming.course : (existing.course || []),
+    project: incoming.project && incoming.project.length > 0 ? incoming.project : (existing.project || []),
+    certification: incoming.certification && incoming.certification.length > 0 ? incoming.certification : (existing.certification || []),
+    patent: incoming.patent && incoming.patent.length > 0 ? incoming.patent : (existing.patent || []),
+    publication: incoming.publication && incoming.publication.length > 0 ? incoming.publication : (existing.publication || []),
+    honorAward: incoming.honorAward && incoming.honorAward.length > 0 ? incoming.honorAward : (existing.honorAward || []),
+    organization: incoming.organization && incoming.organization.length > 0 ? incoming.organization : (existing.organization || []),
+    uid: incoming.uid || existing.uid || "",
+    rawCandidate: incoming.rawCandidate || existing.rawCandidate || null,
     profileUrl: isAvailable(incoming.profileUrl) ? incoming.profileUrl : existing.profileUrl,
     createdAt: existing.createdAt || incoming.createdAt,
     updatedAt: new Date().toISOString()
@@ -315,6 +380,19 @@ app.post("/api/profiles/signalhire", async (req, res) => {
         credits,
         message: result.message || "Candidate not found in SignalHire."
       });
+    }
+
+    // Auto-update or create in profiles.json if found
+    try {
+      const profiles = await readProfiles();
+      const normalized = normalizeProfile(result.profile);
+      const dupIdx = duplicateIndex(profiles, normalized);
+      if (dupIdx !== -1) {
+        profiles[dupIdx] = mergeExistingProfile(profiles[dupIdx], normalized);
+        await writeProfiles(profiles);
+      }
+    } catch (saveErr) {
+      console.warn("[SignalHire Auto-Update] Warning:", saveErr.message);
     }
 
     return res.status(200).json({
