@@ -643,7 +643,7 @@ async function confirmDelete() {
       <th>LOCATION</th>
       <th>EMAIL</th>
       <th>PHONE</th>
-      <th>BACKGROUND</th>
+      {/* <th>BACKGROUND</th> */}
       <th style={{ width: "170px" }}>ACTION</th>
     </tr></thead>
     <tbody>{loading ? (
@@ -673,11 +673,11 @@ async function confirmDelete() {
             ) : null}
           </td>
           <td>{profile.phone || "Not Available"}</td>
-          <td>
+          {/* <td>
             <div style={{ fontSize: "12px", color: "#334155" }}>
               {profile.experiences?.length ? `${profile.experiences.length} Exps` : "No Exp"} • {profile.skills?.length ? `${profile.skills.length} Skills` : "No Skills"}
             </div>
-          </td>
+          </td> */}
           <td>
             <div className="actionButtons">
               <button
