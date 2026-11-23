@@ -26,7 +26,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === "EXTENSION_AUTH_STATUS") {
+  if (message.type === "EXTENSION_AUTH_STATUS" || message.type === "EXTENSION_GET_SESSION") {
     getStoredAuth()
       .then((auth) => sendResponse({
         success: true,
@@ -40,7 +40,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "EXTENSION_LOGIN") {
     (async () => {
       try {
-        const role = String(message.role || "");
+        const credentials = message.credentials || message;
+        const role = String(credentials.role || "");
         if (!["Admin", "Sub Admin"].includes(role)) {
           throw new Error("Only Admin and Sub Admin can use this extension.");
         }
@@ -49,8 +50,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             role,
-            username: String(message.username || "").trim(),
-            pin: String(message.pin || "").trim()
+            username: String(credentials.username || "").trim(),
+            pin: String(credentials.pin || "").trim()
           })
         });
         const data = await response.json().catch(() => ({}));
@@ -62,7 +63,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         });
         sendResponse({ success: true, user: data.user });
       } catch (error) {
-        sendResponse({ success: false, error: error.message || "Unable to log in." });
+        sendResponse({ success: false, message: error.message || "Unable to log in." });
       }
     })();
     return true;
