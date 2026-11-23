@@ -362,7 +362,7 @@ app.get("/api/health", (_req, res) => {
  * POST /api/profiles/signalhire
  * Look up full candidate details from SignalHire Person API
  */
-app.post("/api/profiles/signalhire", async (req, res) => {
+app.post("/api/profiles/signalhire", auth.requireAuth, async (req, res) => {
   try {
     const { profileUrl } = req.body || {};
     if (!profileUrl) {
@@ -416,7 +416,7 @@ app.post("/api/profiles/signalhire", async (req, res) => {
  * GET /api/signalhire/credits
  * Get real-time SignalHire credit balance
  */
-app.get(["/api/signalhire/credits", "/api/profiles/signalhire-credits"], async (_req, res) => {
+app.get(["/api/signalhire/credits", "/api/profiles/signalhire-credits"], auth.requireAuth, async (_req, res) => {
   try {
     const credits = await getSignalHireCredits();
     return res.json({ success: true, credits });
