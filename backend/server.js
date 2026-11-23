@@ -225,7 +225,9 @@ export function normalizeProfile(input, id = Date.now()) {
     rawCandidate: rawCandidate || null,
     source: asText(source.source || input.source) || "LinkedIn CRM",
     createdAt: asText(source.createdAt || input.createdAt) || new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    assignment: input.assignment || source.assignment || null,
+    assignmentHistory: Array.isArray(input.assignmentHistory) ? input.assignmentHistory : (Array.isArray(source.assignmentHistory) ? source.assignmentHistory : [])
   };
 }
 
@@ -314,7 +316,9 @@ function mergeExistingProfile(existing, incoming) {
     rawCandidate: incoming.rawCandidate || existing.rawCandidate || null,
     profileUrl: isAvailable(incoming.profileUrl) ? incoming.profileUrl : existing.profileUrl,
     createdAt: existing.createdAt || incoming.createdAt,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    assignment: existing.assignment || incoming.assignment || null,
+    assignmentHistory: existing.assignmentHistory || incoming.assignmentHistory || []
   };
 }
 
@@ -430,6 +434,64 @@ app.get(["/api/signalhire/credits", "/api/profiles/signalhire-credits"], auth.re
 });
 
 // ----------------------------------------------------
+// Profile Assignment Routes
+// ----------------------------------------------------
+
+app.get("/api/assignable-users", auth.requireAuth, async (req, res, next) => {
+  try {
+    if (!["Admin", "Sub Admin"].includes(req.authUser.role)) return res.status(403).json({ message: "Only Admin and Sub Admin can assign profiles." });
+    const allowedRoles = req.authUser.role === "Admin" ? ["Sub Admin", "Employee"] : ["Employee"];
+    const { data, error } = await supabase.from("users").select("id,username,name,email,role").in("role", allowedRoles).order("name", { ascending: true });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) { next(error); }
+});
+
+app.post("/api/profiles/assign", auth.requireAuth, async (req, res, next) => {
+  try {
+    const ids = [...new Set((Array.isArray(req.body?.profileIds) ? req.body.profileIds : []).map((id) => Number(id)).filter((id) => Number.isSafeInteger(id)))];
+    const assignedToId = asText(req.body?.assignedToId);
+    if (!ids.length || !assignedToId) return res.status(400).json({ message: "Select profiles and an assignee." });
+    if (!["Admin", "Sub Admin"].includes(req.authUser.role)) return res.status(403).json({ message: "Employees cannot assign profiles." });
+    const { data: target, error: targetError } = await supabase.from("users").select("id,name,role").eq("id", assignedToId).maybeSingle();
+    if (targetError) throw targetError;
+    const allowedRoles = req.authUser.role === "Admin" ? ["Sub Admin", "Employee"] : ["Employee"];
+    if (!target || !allowedRoles.includes(target.role)) return res.status(403).json({ message: "You cannot assign profiles to this user." });
+    const { data: rows, error: readError } = await supabase.from("profiles").select("id,data,created_at").in("id", ids);
+    if (readError) throw readError;
+    if (!rows || rows.length !== ids.length) return res.status(404).json({ message: "One or more selected profiles could not be found. Refresh the Lead List and try again." });
+    const now = new Date().toISOString();
+    const updatedRows = [];
+    for (const row of rows) {
+      const profile = row.data || {};
+      const current = profile.assignment || null;
+      if (req.authUser.role === "Admin" && current) return res.status(409).json({ message: "One or more selected profiles are already assigned. Refresh the Lead List." });
+      if (req.authUser.role === "Sub Admin" && (!current || current.assignedToId !== req.authUser.id || current.assignedByRole !== "Admin")) return res.status(403).json({ message: "Sub Admin can assign only profiles assigned to them by Admin." });
+      const assignment = { assignedToId: target.id, assignedToName: target.name, assignedToRole: target.role, assignedById: req.authUser.id, assignedByName: req.authUser.name, assignedByRole: req.authUser.role, assignedAt: now };
+      const history = Array.isArray(profile.assignmentHistory) ? profile.assignmentHistory : [];
+      updatedRows.push({ id: row.id, data: { ...profile, assignment, assignmentHistory: [...history, assignment], updatedAt: now }, created_at: row.created_at || now, updated_at: now });
+    }
+    const { error: saveError } = await supabase.from("profiles").upsert(updatedRows, { onConflict: "id" });
+    if (saveError) throw saveError;
+    res.json({ success: true, assignedCount: updatedRows.length, message: updatedRows.length + " profile(s) assigned to " + target.name + "." });
+  } catch (error) { next(error); }
+});
+
+app.get("/api/assigned-tasks", auth.requireAuth, async (req, res, next) => {
+  try {
+    const profiles = await readProfiles();
+    const tasks = profiles.filter((profile) => {
+      const assignment = profile.assignment;
+      if (!assignment) return false;
+      if (req.authUser.role === "Admin") return true;
+      if (req.authUser.role === "Sub Admin") return assignment.assignedToId === req.authUser.id || assignment.assignedById === req.authUser.id;
+      return assignment.assignedToId === req.authUser.id;
+    });
+    res.json(tasks);
+  } catch (error) { next(error); }
+});
+
+// ----------------------------------------------------
 // Profile CRUD Routes
 // ----------------------------------------------------
 
@@ -442,7 +504,12 @@ app.get("/api/profiles", auth.requireAuth, async (req, res, next) => {
     const profiles = await readProfiles();
     const query = asText(req.query.search).toLowerCase();
 
-    let results = profiles;
+    let results = profiles.filter((profile) => {
+      const assignment = profile.assignment;
+      if (req.authUser.role === "Admin") return !assignment;
+      if (req.authUser.role === "Sub Admin") return !assignment || assignment.assignedToId === req.authUser.id;
+      return assignment?.assignedToId === req.authUser.id;
+    });
     if (query) {
       results = profiles.filter((p) => {
         const textToSearch = [
@@ -538,7 +605,7 @@ app.put("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
       return res.status(404).json({ message: "Profile not found." });
     }
 
-    const updated = normalizeProfile({ ...profiles[index], ...req.body }, profiles[index].id);
+    const updated = normalizeProfile({ ...profiles[index], ...req.body, assignment: profiles[index].assignment || null, assignmentHistory: profiles[index].assignmentHistory || [] }, profiles[index].id);
     const validationError = validateProfile(updated);
     if (validationError) {
       return res.status(400).json({ message: validationError });
