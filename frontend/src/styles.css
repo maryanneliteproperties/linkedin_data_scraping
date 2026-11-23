@@ -844,3 +844,114 @@ body{background:#f5f6f8}
 .assignedTasksPanel .tableToolbar{align-items:center}
 @media(max-width:900px){.assignmentControls{width:100%;order:2}.taskFilters{width:100%;align-items:center}.assignedTasksPanel .tableToolbar{align-items:stretch}}
 @media(max-width:600px){.leadTabs{overflow-x:auto}.assignmentControls select{flex:1;min-width:120px}.taskFilters{align-items:stretch}.taskFilters label{flex:1}.taskFilters select,.taskFilters input[type=date]{width:100%}}
+
+
+/* Assigned Task list: reuse Lead List profile, company and contact presentation */
+.assignedTaskTable {
+  min-width: 1120px;
+  table-layout: fixed;
+}
+.assignedTaskTable th {
+  height: 43px;
+  padding: 10px 11px;
+  background: #fff;
+  color: #7f8a99;
+  font-size: 10px;
+  letter-spacing: .45px;
+  white-space: nowrap;
+}
+.assignedTaskTable td {
+  height: 86px;
+  padding: 11px;
+  background: #fff;
+  vertical-align: middle;
+}
+.assignedTaskTable .profileCell {
+  width: 100%;
+  overflow: hidden;
+}
+.assignedTaskTable .profileText {
+  overflow: hidden;
+}
+.assignedTaskTable .profileNameText {
+  max-width: 100%;
+  overflow: hidden;
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assignedTaskTable .profileText > span:not(.profileNameText) {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: #7b8795;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.assignedTaskTable .companyCell,
+.assignedTaskTable .contactCell {
+  width: 100%;
+  overflow: hidden;
+}
+.assignedTaskTable .companyCell > div {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.assignedTaskTable .companyCell strong,
+.assignedTaskTable .companyCell > div > span,
+.assignedTaskTable .contactCell > span > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assignedTaskTable .contactCell > span > span {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.assignedTaskTable .assignedToCell strong,
+.assignedTaskTable .assignedToCell small,
+.assignedTaskTable .assignedByCell strong,
+.assignedTaskTable .assignedByCell small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assignedTaskTable .assignedToCell strong,
+.assignedTaskTable .assignedByCell strong {
+  color: #263445;
+  font-size: 12px;
+}
+.assignedTaskTable .assignedToCell small,
+.assignedTaskTable .assignedByCell small {
+  margin-top: 4px;
+  color: #8994a3;
+  font-size: 10px;
+}
+.assignedTaskAdmin { min-width: 1120px; }
+.assignedTaskAdmin th:nth-child(1) { width: 170px; }
+.assignedTaskAdmin th:nth-child(2) { width: 260px; }
+.assignedTaskAdmin th:nth-child(3) { width: 210px; }
+.assignedTaskAdmin th:nth-child(4) { width: 280px; }
+.assignedTaskAdmin th:nth-child(5) { width: 120px; }
+.assignedTaskAdmin th:nth-child(6) { width: 130px; }
+.assignedTaskSubAdmin { min-width: 1290px; }
+.assignedTaskSubAdmin th:nth-child(1) { width: 155px; }
+.assignedTaskSubAdmin th:nth-child(2) { width: 240px; }
+.assignedTaskSubAdmin th:nth-child(3) { width: 190px; }
+.assignedTaskSubAdmin th:nth-child(4) { width: 260px; }
+.assignedTaskSubAdmin th:nth-child(5) { width: 150px; }
+.assignedTaskSubAdmin th:nth-child(6) { width: 120px; }
+.assignedTaskSubAdmin th:nth-child(7) { width: 130px; }
+.assignedTaskEmployee { min-width: 1120px; }
+.assignedTaskEmployee th:nth-child(1) { width: 260px; }
+.assignedTaskEmployee th:nth-child(2) { width: 210px; }
+.assignedTaskEmployee th:nth-child(3) { width: 280px; }
+.assignedTaskEmployee th:nth-child(4) { width: 150px; }
+.assignedTaskEmployee th:nth-child(5) { width: 120px; }
+.assignedTaskEmployee th:nth-child(6) { width: 130px; }
