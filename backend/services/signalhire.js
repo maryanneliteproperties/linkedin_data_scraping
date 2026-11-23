@@ -47,6 +47,28 @@ export function deduplicateContacts(contacts = [], targetType = "email") {
 }
 
 /**
+ * Normalize an array of items (strings or objects with name/title)
+ */
+export function normalizeNamedArray(arr) {
+  if (!arr) return [];
+  const list = Array.isArray(arr) ? arr : (typeof arr === "object" ? [arr] : (typeof arr === "string" ? [arr] : []));
+  if (list.length === 0) return [];
+  return list.map(item => {
+    if (typeof item === "string" && item.trim()) return item.trim();
+    if (item && typeof item === "object") {
+      const name = item.name || item.title || item.position || item.degree || "";
+      const extra = item.authority || item.issuer || item.proficiency || item.publisher || item.organization || item.role || "";
+      if (name && extra) return `${String(name).trim()} (${String(extra).trim()})`;
+      if (name) return String(name).trim();
+      for (const val of Object.values(item)) {
+        if (typeof val === "string" && val.trim() && !val.startsWith("http")) return val.trim();
+      }
+    }
+    return "";
+  }).filter(Boolean);
+}
+
+/**
  * Normalize SignalHire candidate object into our standard clean schema
  */
 export function normalizeCandidate(candidate, requestedUrl = "") {
@@ -63,7 +85,7 @@ export function normalizeCandidate(candidate, requestedUrl = "") {
   // 3. Location: City, Country
   const loc = parseLocation(candidate.locations);
 
-  // 4. Contact: Email, Mobile (deduplicated, no duplicates)
+  // 4. Contact: Email, Mobile (deduplicated)
   const allEmails = deduplicateContacts(candidate.contacts || [], "email");
   const allPhones = deduplicateContacts(candidate.contacts || [], "phone");
 
@@ -82,7 +104,13 @@ export function normalizeCandidate(candidate, requestedUrl = "") {
     ended: exp.current ? "Present" : (exp.ended ? String(exp.ended).slice(0, 7) : ""),
     current: Boolean(exp.current),
     summary: exp.summary?.trim() || "",
-    location: exp.location?.trim() || ""
+    location: exp.location?.trim() || "",
+    companyUrl: exp.companyUrl || "",
+    companyLogo: exp.companyLogo || "",
+    companySize: exp.companySize || "",
+    staffCount: exp.staffCount || null,
+    industry: exp.industry || "",
+    website: exp.website || ""
   }));
 
   // 6. Education: Education Details
@@ -99,7 +127,8 @@ export function normalizeCandidate(candidate, requestedUrl = "") {
       degree: degreeStr || "Not Available",
       faculty: edu.faculty?.trim() || "",
       startedYear: edu.startedYear || "",
-      endedYear: edu.endedYear || ""
+      endedYear: edu.endedYear || "",
+      url: edu.url || ""
     };
   });
 
@@ -111,9 +140,29 @@ export function normalizeCandidate(candidate, requestedUrl = "") {
   // 8. Social: LinkedIn Profile URL
   const linkedinUrl = candidate.social?.find(s => s.type === "li")?.link || requestedUrl || "Not Available";
 
+  // 9. Additional Fields (Gender, ExperienceYears, Headline, Language, Course, Project, Certification, Patent, Publication, HonorAward, Organization)
+  const gender = candidate.gender ? String(candidate.gender).trim() : "Not Available";
+  const experienceYears = (candidate.experienceYears !== null && candidate.experienceYears !== undefined && candidate.experienceYears !== "")
+    ? candidate.experienceYears
+    : "Not Available";
+  const headLine = candidate.headLine?.trim() || "Not Available";
+
+  const language = normalizeNamedArray(candidate.language || candidate.languages);
+  const course = normalizeNamedArray(candidate.course || candidate.courses);
+  const project = normalizeNamedArray(candidate.project || candidate.projects);
+  const certification = normalizeNamedArray(candidate.certification || candidate.certifications);
+  const patent = normalizeNamedArray(candidate.patent || candidate.patents);
+  const publication = normalizeNamedArray(candidate.publication || candidate.publications);
+  const honorAward = normalizeNamedArray(candidate.honorAward || candidate.honorAwards || candidate.honors);
+  const organization = normalizeNamedArray(candidate.organization || candidate.organizations);
+
   return {
+    uid: candidate.uid || "",
     name,
     photoUrl,
+    gender,
+    experienceYears,
+    headLine,
     designation,
     company,
     location: loc.location,
@@ -127,7 +176,17 @@ export function normalizeCandidate(candidate, requestedUrl = "") {
     experiences,
     educations,
     skills,
+    language,
+    course,
+    project,
+    certification,
+    patent,
+    publication,
+    honorAward,
+    organization,
+    social: Array.isArray(candidate.social) ? candidate.social : [],
     profileUrl: linkedinUrl,
+    rawCandidate: candidate,
     source: "SignalHire API"
   };
 }

@@ -63,7 +63,10 @@
       location: profile.location || "",
       photoUrl: profile.avatar || profile.photoUrl || "",
       email: profile.email || "",
-      phone: profile.phone || ""
+      personalEmail: profile.personalEmail || "",
+      allEmails: profile.allEmails || [],
+      phone: profile.phone || "",
+      allPhones: profile.allPhones || []
     };
 
     const key =
@@ -1068,68 +1071,140 @@
     if (!panel) return;
 
     const p = getProfile();
+    const photo = p.photoUrl || p.avatar;
+    const cityCountry = [p.city, p.country].filter(c => c && c !== "Not Available").join(", ") || p.location || "Not Available";
 
     panel.innerHTML = `
       <div class="acc-head">
         <div class="acc-brand">
-          <b>LinkedIn <span>Contact Finder</span></b>
-          <small>Profile Information</small>
+          <b>LinkedIn <span>CRM Pro</span></b>
+          <small>SignalHire Verified</small>
         </div>
         <button data-action="close" title="Close">✕</button>
       </div>
 
       <div class="acc-body">
+        <!-- 1. Profile: Photo, Name -->
         <div class="acc-card">
           ${
-            p.avatar
-              ? `<img class="acc-avatar" src="${esc(p.avatar)}" alt="Profile Image">`
+            photo && photo !== "Not Available"
+              ? `<img class="acc-avatar" src="${esc(photo)}" alt="Profile Image">`
               : `<div class="acc-avatar acc-placeholder">${esc((p.name || "?").charAt(0))}</div>`
           }
-
           <div class="acc-profile">
-            <div class="acc-name">${esc(p.name || "Name Not Available")}</div>
-            <div class="acc-designation">${esc(p.headline || "Designation Not Available")}</div>
-            <div class="acc-company">${esc(p.company || "Company Not Available")}</div>
-            <div class="acc-location">
-              <span>📍</span>
-              ${esc(p.location || "City Not Available")}
-            </div>
+            <div class="acc-name">${esc(p.name || "Not Available")}</div>
+            <div class="acc-designation">${esc(p.designation || p.headline || "Not Available")}</div>
+            <div class="acc-company">${esc(p.company || "Not Available")}</div>
+            <div class="acc-location"><span>📍</span> ${esc(cityCountry)}</div>
           </div>
         </div>
 
+        <!-- 2. Contact Information: Email, Mobile -->
         <div class="acc-divider"></div>
         <div class="acc-section-title">Contact Information</div>
+        <div class="acc-contact">
+          <div class="acc-contact-item">
+            <span class="acc-contact-label">Business / Primary Email</span>
+            <div class="acc-contact-value">${esc(p.email || "Not Available")}</div>
+            ${
+              Array.isArray(p.allEmails) && p.allEmails.length > 1
+                ? `<div class="acc-chip-list">
+                    <span class="acc-chip-hint">All Emails (${p.allEmails.length}):</span>
+                    ${p.allEmails.map(e => `
+                      <button type="button" class="acc-chip ${e.value === p.email ? 'active' : ''}" data-action="select-email" data-email="${esc(e.value)}">
+                        <span class="acc-chip-badge ${esc(e.subType || '')}">${esc(e.subType || 'email')}</span>
+                        ${esc(e.value)}
+                      </button>
+                    `).join('')}
+                   </div>`
+                : ""
+            }
+          </div>
 
+          ${
+            p.personalEmail && p.personalEmail !== p.email
+              ? `<div class="acc-contact-item">
+                  <span class="acc-contact-label">Personal Email</span>
+                  <div class="acc-contact-value">${esc(p.personalEmail)}</div>
+                 </div>`
+              : ""
+          }
+
+          <div class="acc-contact-item">
+            <span class="acc-contact-label">Mobile Phone</span>
+            <div class="acc-contact-value">${esc(p.phone || "Not Available")}</div>
+            ${
+              Array.isArray(p.allPhones) && p.allPhones.length > 1
+                ? `<div class="acc-chip-list">
+                    <span class="acc-chip-hint">All Phones (${p.allPhones.length}):</span>
+                    ${p.allPhones.map(ph => `
+                      <button type="button" class="acc-chip ${ph.value === p.phone ? 'active' : ''}" data-action="select-phone" data-phone="${esc(ph.value)}">
+                        <span class="acc-chip-badge phone">${esc(ph.subType || 'mobile')}</span>
+                        ${esc(ph.value)}
+                      </button>
+                    `).join('')}
+                   </div>`
+                : ""
+            }
+          </div>
+        </div>
+
+        <!-- 3. Work Experience & Education Summary -->
         ${
-          contactRevealed || p.email || p.phone
+          (Array.isArray(p.experiences) && p.experiences.length > 0) || (Array.isArray(p.educations) && p.educations.length > 0)
             ? `
-              <div class="acc-contact">
-               
-                <div class="acc-contact-item">
-                  <span class="acc-contact-label">Business Email</span>
-                  <div class="acc-contact-value">${esc(p.email || "Not Available")}</div>
-                  ${
-                    (!p.email || p.email === "Not Available") && p.name && p.company
-                      ? `<button class="acc-sub-btn" data-action="find-email">⚡ Find Business Email</button>`
-                      : ""
-                  }
-                </div>
-
-                <div class="acc-contact-item">
-                  <span class="acc-contact-label">Contact Number</span>
-                  <div class="acc-contact-value">${esc(p.phone || "Not Available")}</div>
-                </div>
+              <div class="acc-divider"></div>
+              <div class="acc-section-title">Professional Background</div>
+              <div class="acc-meta-section">
+                ${
+                  Array.isArray(p.experiences) && p.experiences.length > 0
+                    ? `<div class="acc-meta-item">
+                        <b>Experience:</b> ${esc(p.experiences[0].position)} at ${esc(p.experiences[0].company)} ${p.experiences.length > 1 ? `(+${p.experiences.length - 1} more)` : ''}
+                       </div>`
+                    : ""
+                }
+                ${
+                  Array.isArray(p.educations) && p.educations.length > 0
+                    ? `<div class="acc-meta-item">
+                        <b>Education:</b> ${esc(p.educations[0].university)} ${p.educations[0].degree ? `(${esc(p.educations[0].degree)})` : ''}
+                       </div>`
+                    : ""
+                }
               </div>
-
-              <button class="acc-main" data-action="copy">Copy Contact Details</button>
             `
-            : `<button class="acc-main" data-action="reveal">👁 Reveal Contact</button>`
+            : ""
         }
 
-        <button class="acc-main" data-action="save-profile">Save Profile</button>
+        <!-- 4. Skills -->
+        ${
+          Array.isArray(p.skills) && p.skills.length > 0
+            ? `
+              <div class="acc-divider"></div>
+              <div class="acc-section-title">Skills (${p.skills.length})</div>
+              <div class="acc-skills-wrap">
+                ${p.skills.slice(0, 8).map(s => `<span class="acc-skill-tag">${esc(s)}</span>`).join('')}
+                ${p.skills.length > 8 ? `<span class="acc-skill-more">+${p.skills.length - 8} more</span>` : ''}
+              </div>
+            `
+            : ""
+        }
+
+        <div class="acc-divider"></div>
+
+        <!-- Action Buttons -->
+        <button class="acc-main acc-signalhire-btn" data-action="signalhire-enrich">
+          ⚡ Enrich with SignalHire (Email + Phone)
+        </button>
+
+        <div class="acc-secondary-actions">
+          <button class="acc-sub-btn" data-action="reveal">👁 Scrape Page</button>
+          <button class="acc-sub-btn" data-action="copy">📋 Copy Details</button>
+        </div>
+
+        <button class="acc-main acc-save-btn" data-action="save-profile">Save Profile to CRM</button>
 
         <div class="acc-message"></div>
-        <div class="acc-footer">LinkedIn Profile Capture</div>
+        <div class="acc-footer">LinkedIn CRM • SignalHire API</div>
       </div>
     `;
 
@@ -1142,82 +1217,27 @@
 
       if (action === "close") {
         closePanel(true);
-
-        console.log(
-          "[Contact Finder] Panel closed by user for profile:",
-          manuallyClosedUrl
-        );
-
         return;
       }
 
-      if (action === "reveal") {
+      if (action === "signalhire-enrich") {
         button.disabled = true;
-        button.textContent = "Loading Contact...";
-
-        try {
-          const contact = await revealContactModal(2500);
-
-          if (!cachedProfile) {
-            cachedProfile = scrape();
-          }
-
-          cachedProfile.email =
-            contact.email || cachedProfile.email || "";
-
-          cachedProfile.phone =
-            contact.phone || cachedProfile.phone || "";
-
-          if (contact.email || contact.phone) {
-            await saveContactDetails(
-              cachedProfile.profileUrl || location.href,
-              contact
-            );
-          }
-
-          // Update Local Storage only.
-          // Do NOT send to backend automatically.
-          await saveProfileToLocalStorage(cachedProfile);
-
-          contactRevealed = true;
-          render();
-        } catch (err) {
-          console.error(
-            "[Contact Finder] Reveal error:",
-            err
-          );
-
-          button.disabled = false;
-          button.textContent = "👁 Reveal Contact";
-
-          if (message) {
-            message.textContent =
-              "Unable to fetch contact details.";
-            message.className = "acc-message error";
-          }
-        }
-
-        return;
-      }
-
-      if (action === "find-email") {
-        button.disabled = true;
-        button.textContent = "🔍 Checking Mail Server...";
+        button.textContent = "⚡ Querying SignalHire...";
 
         try {
           const current = getProfile();
-          
+          const profileUrl = current.profileUrl || location.href;
+
           chrome.runtime.sendMessage(
             {
-              type: "FIND_BUSINESS_EMAIL",
-              name: current.name,
-              company: current.company
+              type: "SIGNALHIRE_ENRICH",
+              profileUrl
             },
             async (data) => {
               if (chrome.runtime.lastError) {
-                console.error("[Contact Finder] Extension background error:", chrome.runtime.lastError.message);
+                console.error("[SignalHire] Background error:", chrome.runtime.lastError.message);
                 button.disabled = false;
-                button.textContent = "⚡ Find Business Email";
+                button.textContent = "⚡ Enrich with SignalHire (Email + Phone)";
                 if (message) {
                   message.textContent = "Service worker error. Please reload extension.";
                   message.className = "acc-message error";
@@ -1225,36 +1245,138 @@
                 return;
               }
 
-              if (data && data.success && data.email) {
-                cachedProfile.email = data.email;
+              if (data && data.success && data.found && data.profile) {
+                const sp = data.profile;
+                cachedProfile = {
+                  ...cachedProfile,
+                  name: sp.name || cachedProfile?.name || "Not Available",
+                  photoUrl: sp.photoUrl || cachedProfile?.photoUrl || cachedProfile?.avatar || "Not Available",
+                  avatar: sp.photoUrl || cachedProfile?.avatar || "Not Available",
+                  designation: sp.designation || cachedProfile?.designation || cachedProfile?.headline || "Not Available",
+                  headline: sp.designation || cachedProfile?.headline || "Not Available",
+                  company: sp.company || cachedProfile?.company || "Not Available",
+                  location: sp.location || cachedProfile?.location || "Not Available",
+                  city: sp.city || "Not Available",
+                  country: sp.country || "Not Available",
+                  email: sp.email || "Not Available",
+                  personalEmail: sp.personalEmail || "",
+                  phone: sp.phone || "Not Available",
+                  allEmails: Array.isArray(sp.allEmails) ? sp.allEmails : [],
+                  allPhones: Array.isArray(sp.allPhones) ? sp.allPhones : [],
+                  experiences: Array.isArray(sp.experiences) ? sp.experiences : [],
+                  educations: Array.isArray(sp.educations) ? sp.educations : [],
+                  skills: Array.isArray(sp.skills) ? sp.skills : [],
+                  gender: sp.gender || "Not Available",
+                  experienceYears: sp.experienceYears ?? "Not Available",
+                  headLine: sp.headLine || "Not Available",
+                  language: Array.isArray(sp.language) ? sp.language : [],
+                  course: Array.isArray(sp.course) ? sp.course : [],
+                  project: Array.isArray(sp.project) ? sp.project : [],
+                  certification: Array.isArray(sp.certification) ? sp.certification : [],
+                  patent: Array.isArray(sp.patent) ? sp.patent : [],
+                  publication: Array.isArray(sp.publication) ? sp.publication : [],
+                  honorAward: Array.isArray(sp.honorAward) ? sp.honorAward : [],
+                  organization: Array.isArray(sp.organization) ? sp.organization : [],
+                  rawCandidate: sp.rawCandidate || null,
+                  profileUrl: sp.profileUrl || profileUrl
+                };
+
                 await saveProfileToLocalStorage(cachedProfile);
                 contactRevealed = true;
                 render();
+
+                // Auto-sync enriched profile to backend
+                sendProfileToBackend(cachedProfile).catch(() => {});
+
                 const newMsg = panel?.querySelector(".acc-message");
                 if (newMsg) {
-                  newMsg.textContent = `Found ${data.status === "deliverable" ? "verified" : "predicted"} email: ${data.email}`;
+                  const emailsCount = (cachedProfile.allEmails || []).length;
+                  const phonesCount = (cachedProfile.allPhones || []).length;
+                  const credTxt = data.credits !== null && data.credits !== undefined ? ` (${data.credits} credits left)` : "";
+                  newMsg.textContent = `⚡ SignalHire: Found ${emailsCount} email(s) & ${phonesCount} phone(s)!${credTxt}`;
                   newMsg.className = "acc-message success";
                 }
               } else {
                 button.disabled = false;
-                button.textContent = "⚡ Find Business Email";
+                button.textContent = "⚡ Enrich with SignalHire (Email + Phone)";
                 if (message) {
-                  message.textContent = data?.message || "No active mail domain found for this company.";
+                  message.textContent = data?.message || "Candidate not found in SignalHire.";
                   message.className = "acc-message error";
                 }
               }
             }
           );
         } catch (err) {
-          console.error("[Contact Finder] Error:", err);
+          console.error("[SignalHire] Error:", err);
           button.disabled = false;
-          button.textContent = "⚡ Find Business Email";
+          button.textContent = "⚡ Enrich with SignalHire (Email + Phone)";
           if (message) {
             message.textContent = "Could not initiate search.";
             message.className = "acc-message error";
           }
         }
+        return;
+      }
 
+      if (action === "select-email") {
+        const selected = button.dataset.email;
+        if (selected && cachedProfile) {
+          cachedProfile.email = selected;
+          await saveProfileToLocalStorage(cachedProfile);
+          render();
+          const newMsg = panel?.querySelector(".acc-message");
+          if (newMsg) {
+            newMsg.textContent = `Selected email: ${selected}`;
+            newMsg.className = "acc-message success";
+          }
+        }
+        return;
+      }
+
+      if (action === "select-phone") {
+        const selected = button.dataset.phone;
+        if (selected && cachedProfile) {
+          cachedProfile.phone = selected;
+          await saveProfileToLocalStorage(cachedProfile);
+          render();
+          const newMsg = panel?.querySelector(".acc-message");
+          if (newMsg) {
+            newMsg.textContent = `Selected phone: ${selected}`;
+            newMsg.className = "acc-message success";
+          }
+        }
+        return;
+      }
+
+      if (action === "reveal") {
+        button.disabled = true;
+        button.textContent = "Scraping Page...";
+
+        try {
+          const contact = await revealContactModal(2500);
+          if (!cachedProfile) cachedProfile = scrape();
+
+          if (contact.email) cachedProfile.email = contact.email;
+          if (contact.phone) cachedProfile.phone = contact.phone;
+
+          await saveProfileToLocalStorage(cachedProfile);
+          contactRevealed = true;
+          render();
+
+          const newMsg = panel?.querySelector(".acc-message");
+          if (newMsg) {
+            newMsg.textContent = "Visible profile scraped successfully ✓";
+            newMsg.className = "acc-message success";
+          }
+        } catch (err) {
+          console.error("[Contact Finder] Scrape error:", err);
+          button.disabled = false;
+          button.textContent = "👁 Scrape Page";
+          if (message) {
+            message.textContent = "Unable to fetch contact details.";
+            message.className = "acc-message error";
+          }
+        }
         return;
       }
 
@@ -1263,127 +1385,109 @@
 
         isSavingProfile = true;
         button.disabled = true;
-        button.textContent = "Saving Profile...";
+        button.textContent = "Saving to CRM...";
 
         try {
-          const latest = scrape();
-
-          const stored = await getProfileFromLocalStorage(
-            latest.profileUrl
-          );
+          const current = getProfile();
+          const stored = await getProfileFromLocalStorage(current.profileUrl);
+          const base = cachedProfile || stored || {};
 
           const finalProfile = {
-            name: isValidValue(
-              latest.name,
-              "Name Not Available"
-            )
-              ? latest.name
-              : stored?.name || "",
-
-            headline: isValidValue(
-              latest.headline,
-              "Designation Not Available"
-            )
-              ? latest.headline
-              : stored?.headline || "",
-
-            company:
-              latest.company || stored?.company || "",
-
-            location:
-              latest.location || stored?.location || "",
-
-            avatar:
-              latest.avatar || stored?.photoUrl || "",
-
-            profileUrl: latest.profileUrl,
-
-            email:
-              cachedProfile?.email ||
-              stored?.email ||
-              latest.email ||
-              "",
-
-            phone:
-              cachedProfile?.phone ||
-              stored?.phone ||
-              latest.phone ||
-              ""
+            name: current.name && current.name !== "Not Available" ? current.name : (base.name || stored?.name || "Not Available"),
+            photoUrl: current.photoUrl || current.avatar || base.photoUrl || stored?.photoUrl || "Not Available",
+            designation: current.designation || current.headline || base.designation || base.headLine || stored?.designation || "Not Available",
+            company: current.company || base.company || stored?.company || "Not Available",
+            location: current.location || base.location || stored?.location || "Not Available",
+            city: current.city || base.city || stored?.city || "Not Available",
+            country: current.country || base.country || stored?.country || "Not Available",
+            email: current.email && current.email !== "Not Available" ? current.email : (base.email || stored?.email || "Not Available"),
+            personalEmail: current.personalEmail || base.personalEmail || stored?.personalEmail || "",
+            phone: current.phone && current.phone !== "Not Available" ? current.phone : (base.phone || stored?.phone || "Not Available"),
+            allEmails: current.allEmails?.length ? current.allEmails : (base.allEmails?.length ? base.allEmails : (stored?.allEmails || [])),
+            allPhones: current.allPhones?.length ? current.allPhones : (base.allPhones?.length ? base.allPhones : (stored?.allPhones || [])),
+            experiences: current.experiences?.length ? current.experiences : (base.experiences?.length ? base.experiences : (stored?.experiences || [])),
+            educations: current.educations?.length ? current.educations : (base.educations?.length ? base.educations : (stored?.educations || [])),
+            skills: current.skills?.length ? current.skills : (base.skills?.length ? base.skills : (stored?.skills || [])),
+            gender: base.gender || stored?.gender || "Not Available",
+            experienceYears: base.experienceYears ?? stored?.experienceYears ?? "Not Available",
+            headLine: base.headLine || current.headline || stored?.headLine || "Not Available",
+            language: base.language?.length ? base.language : (stored?.language || []),
+            course: base.course?.length ? base.course : (stored?.course || []),
+            project: base.project?.length ? base.project : (stored?.project || []),
+            certification: base.certification?.length ? base.certification : (base.certifications?.length ? base.certifications : (stored?.certification || stored?.certifications || [])),
+            patent: base.patent?.length ? base.patent : (stored?.patent || []),
+            publication: base.publication?.length ? base.publication : (stored?.publication || []),
+            honorAward: base.honorAward?.length ? base.honorAward : (stored?.honorAward || []),
+            organization: base.organization?.length ? base.organization : (stored?.organization || []),
+            social: base.social?.length ? base.social : (stored?.social || []),
+            rawCandidate: base.rawCandidate || stored?.rawCandidate || null,
+            uid: base.uid || stored?.uid || "",
+            source: base.source || stored?.source || "LinkedIn CRM",
+            profileUrl: current.profileUrl || base.profileUrl || stored?.profileUrl || location.href
           };
 
-          // Keep the current profile updated.
           cachedProfile = finalProfile;
-
-          // Save the seven fields locally first.
           await saveProfileToLocalStorage(finalProfile);
 
-          // Only this button sends data to the backend.
-          const success =
-            await sendProfileToBackend(finalProfile);
-
+          const success = await sendProfileToBackend(finalProfile);
           if (!success) {
             throw new Error("Backend save failed.");
           }
 
-          button.textContent = "Saved ✓";
+          button.textContent = "Saved to CRM ✓";
           button.disabled = true;
 
-          console.log(
-            "[Contact Finder] Final profile saved:",
-            finalProfile
-          );
-
           if (message) {
-            message.textContent =
-              "Profile saved successfully ✓";
+            message.textContent = "Profile saved successfully ✓";
             message.className = "acc-message success";
           }
         } catch (error) {
-          console.error(
-            "[Contact Finder] Save Profile Error:",
-            error
-          );
-
+          console.error("[Save Profile Error]:", error);
           button.disabled = false;
-          button.textContent = "Save Profile";
-
+          button.textContent = "Save Profile to CRM";
           if (message) {
-            message.textContent =
-              "Profile save failed. Please try again.";
+            message.textContent = "Profile save failed. Please ensure backend is running.";
             message.className = "acc-message error";
           }
         } finally {
           isSavingProfile = false;
         }
-
         return;
       }
 
       if (action === "copy") {
-        const current = getProfile();
+        const c = getProfile();
+        const cityCountry = [c.city, c.country].filter(Boolean).join(", ") || c.location || "Not Available";
 
-        const contactText = [
-          `Name: ${current.name}`,
-          `Designation: ${current.headline}`,
-          `Company: ${current.company || "Not Available"}`,
-          `City: ${current.location || "Not Available"}`,
-          `Email: ${current.email || "Not Available"}`,
-          `Phone: ${current.phone || "Not Available"}`,
-          `LinkedIn: ${current.profileUrl}`
-        ].join("\n");
+        const lines = [
+          `Name: ${c.name || "Not Available"}`,
+          `Designation: ${c.designation || c.headline || "Not Available"}`,
+          `Company: ${c.company || "Not Available"}`,
+          `Location: ${cityCountry}`,
+          `Business Email: ${c.email || "Not Available"}`
+        ];
+        if (c.personalEmail) lines.push(`Personal Email: ${c.personalEmail}`);
+        lines.push(`Mobile Phone: ${c.phone || "Not Available"}`);
+        if (c.experiences && c.experiences.length > 0) {
+          lines.push(`Experience: ${c.experiences[0].position} at ${c.experiences[0].company}`);
+        }
+        if (c.educations && c.educations.length > 0) {
+          lines.push(`Education: ${c.educations[0].university}`);
+        }
+        if (c.skills && c.skills.length > 0) {
+          lines.push(`Skills: ${c.skills.slice(0, 5).join(", ")}`);
+        }
+        lines.push(`LinkedIn: ${c.profileUrl || location.href}`);
 
         try {
-          await navigator.clipboard.writeText(contactText);
-
+          await navigator.clipboard.writeText(lines.join("\n"));
           if (message) {
-            message.textContent =
-              "Contact details copied ✓";
+            message.textContent = "All details copied to clipboard ✓";
             message.className = "acc-message success";
           }
         } catch {
           if (message) {
-            message.textContent =
-              "Unable to copy contact details.";
+            message.textContent = "Unable to copy details.";
             message.className = "acc-message error";
           }
         }
@@ -1391,8 +1495,8 @@
     };
   }
 
-  // Load profile and restore stored contacts/profile fields.
-  async function loadProfile(baseUrl) {
+
+    async function loadProfile(baseUrl) {
     cachedProfile = scrape();
 
     const profileUrl = getBaseProfileUrl(baseUrl);

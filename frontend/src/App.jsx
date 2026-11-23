@@ -4,6 +4,44 @@ import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, Download
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
+function formatListValue(item) {
+  if (!item) return "";
+  if (typeof item === "string") return item.trim();
+  if (typeof item === "object") {
+    const name = item.name || item.title || item.position || item.degree || "";
+    const extra = item.authority || item.issuer || item.organization || item.proficiency || item.publisher || "";
+    if (name && extra) return `${String(name).trim()} (${String(extra).trim()})`;
+    if (name) return String(name).trim();
+    for (const val of Object.values(item)) {
+      if (typeof val === "string" && val.trim() && !val.startsWith("http")) return val.trim();
+    }
+  }
+  return String(item);
+}
+
+function renderPills(data, max = 2) {
+  if (!data) return <span className="emptyCellText">Not Available</span>;
+  const list = Array.isArray(data)
+    ? data
+    : (typeof data === "object" ? [data] : (typeof data === "string" && data.trim() ? [data.trim()] : []));
+  const formatted = list.map(formatListValue).filter(Boolean);
+  if (formatted.length === 0) {
+    return <span className="emptyCellText">Not Available</span>;
+  }
+  return (
+    <div className="tablePillList">
+      {formatted.slice(0, max).map((item, idx) => (
+        <span key={idx} className="tablePillBadge" title={item}>{item}</span>
+      ))}
+      {formatted.length > max && (
+        <span className="tablePillCount" title={formatted.slice(max).join(", ")}>
+          +{formatted.length - max}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [profiles, setProfiles] = useState([]);
   const [search, setSearch] = useState("");
@@ -538,6 +576,13 @@ async function confirmDelete() {
             <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
               🏢 {viewingProfile.company || "Not Available"} • 📍 {[viewingProfile.city, viewingProfile.country].filter(c => c && c !== "Not Available").join(", ") || viewingProfile.location || "Not Available"}
             </p>
+            <div style={{ display: "flex", gap: "10px", marginTop: "6px", fontSize: "12px", color: "#334155" }}>
+              <span><strong>Gender:</strong> {viewingProfile.gender || "Not Available"}</span>
+              <span>•</span>
+              <span><strong>Experience:</strong> {viewingProfile.experienceYears ? `${viewingProfile.experienceYears} yr(s)` : "Not Available"}</span>
+              <span>•</span>
+              <span><strong>Headline:</strong> {viewingProfile.headLine || "Not Available"}</span>
+            </div>
           </div>
         </div>
 
@@ -843,8 +888,7 @@ async function confirmDelete() {
           <td><div className="actionButtons"><button className="viewBtn" type="button" onClick={() => setViewingProfile(profile)} title="View full details">View</button><button className="editBtn" type="button" onClick={() => startEdit(profile)} title="Edit profile">Edit</button><button className="deleteBtn" type="button" onClick={() => deleteProfile(profile)} title="Delete profile"><MoreHorizontal size={15}/></button><div className="rowExportWrap"><button className="exportBtn" type="button" onClick={() => setExportMenuFor(current => current === String(profile.id) ? null : String(profile.id))} aria-expanded={exportMenuFor === String(profile.id)} title="Export profiles"><DownloadCloud size={13}/>Export<ChevronDown size={12}/></button>{exportMenuFor === String(profile.id) && <div className="exportDropdown"><button type="button" onClick={() => exportProfiles("excel")} disabled={Boolean(exportingFormat)}><FileSpreadsheet size={15}/>Excel (.xlsx)</button><button type="button" onClick={() => exportProfiles("pdf")} disabled={Boolean(exportingFormat)}><FileText size={15}/>PDF (.pdf)</button></div>}</div></div></td>
         </tr>
       ))
-    )}</tbody>
-    </table></div>
+    )}</tbody></table></div>
         <div className="paginationContainer">
           <div className="paginationInfo">
             Showing <strong>{firstItem}-{lastItem}</strong> of{" "}
