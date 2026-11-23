@@ -532,3 +532,77 @@ body{background:#f5f6f8}
 .exportDropdown button:hover{background:#f0f6fc}
 .exportDropdown button:disabled{opacity:.55;cursor:wait}
 @media(max-width:1050px){.leadTable{min-width:850px}}
+
+
+/* Fix table column overlap: restore native table-cell layout for company column.
+   A legacy td:nth-child(3) rule was changing the COMPANY cell to -webkit-box. */
+.leadTable tbody td:nth-child(3) {
+  display: table-cell;
+  width: 235px;
+  min-width: 235px;
+  max-width: 235px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.leadTable {
+  width: 100%;
+  min-width: 1072px;
+  table-layout: fixed;
+}
+
+.leadTable .selectCol { width: 42px; }
+.leadTable .profileCol { width: 260px; }
+.leadTable .companyCol { width: 235px; }
+.leadTable .contactCol { width: 280px; }
+.leadTable .actionsCol { width: 255px; }
+
+.leadTable tbody td:nth-child(2),
+.leadTable tbody td:nth-child(4),
+.leadTable tbody td:nth-child(5) {
+  display: table-cell;
+  overflow: hidden;
+}
+
+.companyCell {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.companyCell > div {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.companyCell strong,
+.companyCell > div > span {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contactCell {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.contactCell > span {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.contactCell > span > span {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
