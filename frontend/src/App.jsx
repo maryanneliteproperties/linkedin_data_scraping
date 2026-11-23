@@ -266,6 +266,7 @@ async function saveEdit(event) {
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(editForm)
       }
     );
@@ -307,7 +308,7 @@ async function confirmDelete() {
   try {
     const response = await fetch(
       `${API}/profiles/${encodeURIComponent(deletingProfile.id)}`,
-      { method: "DELETE" }
+      { method: "DELETE", credentials: "include" }
     );
 
     const result = await response.json();
