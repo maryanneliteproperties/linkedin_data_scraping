@@ -9,6 +9,7 @@ export function setupAuth(app, dataDir, asText) {
   const sessions = new Map();
   const pinPattern = new RegExp("^[0-9]{4,8}$");
   const emailPattern = new RegExp("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+  const usernamePattern = new RegExp("^[a-zA-Z0-9._-]{3,30}$");
 
   function cookies(header = "") {
     return Object.fromEntries(header.split(";").map((part) => {
@@ -28,7 +29,33 @@ export function setupAuth(app, dataDir, asText) {
   async function readUsers() {
     try {
       const data = JSON.parse(await fs.readFile(usersFile, "utf8"));
-      return Array.isArray(data) ? data : [];
+      const users = Array.isArray(data) ? data : [];
+      const usedUsernames = new Set();
+      let changed = false;
+
+      for (const user of users) {
+        let username = String(user.username || "").trim().toLowerCase();
+        if (!usernamePattern.test(username) || usedUsernames.has(username)) {
+          const emailPrefix = String(user.email || "user").split("@")[0].toLowerCase();
+          const base = emailPrefix.replace(/[^a-z0-9._-]/g, "").slice(0, 24);
+          const safeBase = base.length >= 3 ? base : (base + "user").slice(0, 24);
+          username = safeBase;
+          let suffix = 1;
+          while (usedUsernames.has(username)) {
+            const tail = String(suffix++);
+            username = safeBase.slice(0, 30 - tail.length) + tail;
+          }
+          user.username = username;
+          changed = true;
+        } else if (user.username !== username) {
+          user.username = username;
+          changed = true;
+        }
+        usedUsernames.add(username);
+      }
+
+      if (changed) await writeUsers(users);
+      return users;
     } catch (error) {
       if (error.code === "ENOENT") return [];
       throw error;
@@ -40,7 +67,7 @@ export function setupAuth(app, dataDir, asText) {
     await fs.writeFile(temp, JSON.stringify(users, null, 2), { mode: 0o600 });
     await fs.rename(temp, usersFile);
   }
-  const safeUser = (user) => ({ id: user.id, name: user.name, email: user.email, role: user.role });
+  const safeUser = (user) => ({ id: user.id, username: user.username || "", name: user.name, email: user.email, role: user.role });
 
   async function requireAuth(req, res, next) {
     try {
@@ -71,20 +98,22 @@ export function setupAuth(app, dataDir, asText) {
       return;
     }
     const credentials = hashPin(pin);
-    users.push({ id: crypto.randomUUID(), name, email, role: "Admin", pinSalt: credentials.salt, pinHash: credentials.hash, createdAt: new Date().toISOString() });
+    const usernameBase = email.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 24) || "adminuser";
+    users.push({ id: crypto.randomUUID(), username: usernameBase.length >= 3 ? usernameBase : (usernameBase + "user").slice(0, 30), name, email, role: "Admin", pinSalt: credentials.salt, pinHash: credentials.hash, createdAt: new Date().toISOString() });
     await writeUsers(users);
     console.log("[Auth] Initial Admin account provisioned.");
   }
 
   app.post("/api/auth/login", async (req, res, next) => {
     try {
+      const username = asText(req.body?.username).toLowerCase();
       const role = asText(req.body?.role);
       const pin = asText(req.body?.pin);
-      if (!["Admin", "Sub Admin", "Employee"].includes(role) || !pinPattern.test(pin)) {
-        return res.status(400).json({ message: "Select a valid role and enter your 4-8 digit PIN." });
+      if (!usernamePattern.test(username) || !["Admin", "Sub Admin", "Employee"].includes(role) || !pinPattern.test(pin)) {
+        return res.status(400).json({ message: "Enter a valid user name, select a role and enter your 4-8 digit PIN." });
       }
-      const user = (await readUsers()).find((item) => item.role === role && verifyPin(pin, item));
-      if (!user) return res.status(401).json({ message: "Incorrect role or PIN." });
+      const user = (await readUsers()).find((item) => item.username === username && item.role === role && verifyPin(pin, item));
+      if (!user) return res.status(401).json({ message: "Incorrect user name, role or PIN." });
       const token = crypto.randomBytes(32).toString("hex");
       sessions.set(token, { userId: user.id, expiresAt: Date.now() + maxAge * 1000 });
       const secure = process.env.NODE_ENV === "production";
@@ -109,18 +138,20 @@ export function setupAuth(app, dataDir, asText) {
 
   app.post("/api/admin/users", requireAuth, requireAdmin, async (req, res, next) => {
     try {
+      const username = asText(req.body?.username).toLowerCase();
       const name = asText(req.body?.name);
       const email = asText(req.body?.email).toLowerCase();
       const pin = asText(req.body?.pin);
       const role = asText(req.body?.role);
-      if (!name || !emailPattern.test(email) || !pinPattern.test(pin) || !["Sub Admin", "Employee"].includes(role)) {
-        return res.status(400).json({ message: "Enter a name, valid email, 4-8 digit PIN and select Sub Admin or Employee." });
+      if (!usernamePattern.test(username) || !name || !emailPattern.test(email) || !pinPattern.test(pin) || !["Sub Admin", "Employee"].includes(role)) {
+        return res.status(400).json({ message: "Enter a valid user name, name, email, 4-8 digit PIN and select Sub Admin or Employee." });
       }
       const users = await readUsers();
+      if (users.some((item) => item.username === username)) return res.status(409).json({ message: "This user name is already taken. Choose another user name." });
       if (users.some((item) => item.email.toLowerCase() === email)) return res.status(409).json({ message: "An account with this email already exists." });
       if (users.some((item) => item.role === role && verifyPin(pin, item))) return res.status(409).json({ message: "This PIN is already assigned to another user with the same role. Choose a unique PIN." });
       const credentials = hashPin(pin);
-      const user = { id: crypto.randomUUID(), name, email, role, pinSalt: credentials.salt, pinHash: credentials.hash, createdAt: new Date().toISOString(), createdBy: req.authUser.id };
+      const user = { id: crypto.randomUUID(), username, name, email, role, pinSalt: credentials.salt, pinHash: credentials.hash, createdAt: new Date().toISOString(), createdBy: req.authUser.id };
       users.push(user);
       await writeUsers(users);
       res.status(201).json({ success: true, user: safeUser(user) });
@@ -135,12 +166,16 @@ export function setupAuth(app, dataDir, asText) {
       const existing = users[index];
       if (existing.role === "Admin") return res.status(403).json({ message: "Admin account cannot be edited here." });
 
+      const username = asText(req.body?.username).toLowerCase();
       const name = asText(req.body?.name);
       const email = asText(req.body?.email).toLowerCase();
       const role = asText(req.body?.role);
       const pin = asText(req.body?.pin);
-      if (!name || !emailPattern.test(email) || !["Sub Admin", "Employee"].includes(role)) {
-        return res.status(400).json({ message: "Enter a name, valid email and select Sub Admin or Employee." });
+      if (!usernamePattern.test(username) || !name || !emailPattern.test(email) || !["Sub Admin", "Employee"].includes(role)) {
+        return res.status(400).json({ message: "Enter a valid user name, name, email and select Sub Admin or Employee." });
+      }
+      if (users.some((item) => item.id !== existing.id && item.username === username)) {
+        return res.status(409).json({ message: "This user name is already taken. Choose another user name." });
       }
       if (users.some((item) => item.id !== existing.id && item.email.toLowerCase() === email)) {
         return res.status(409).json({ message: "An account with this email already exists." });
@@ -155,7 +190,7 @@ export function setupAuth(app, dataDir, asText) {
         return res.status(409).json({ message: "This PIN is already assigned to another user with the same role. Choose a unique PIN." });
       }
 
-      const updated = { ...existing, name, email, role, updatedAt: new Date().toISOString() };
+      const updated = { ...existing, username, name, email, role, updatedAt: new Date().toISOString() };
       if (pin) {
         const credentials = hashPin(pin);
         updated.pinSalt = credentials.salt;
