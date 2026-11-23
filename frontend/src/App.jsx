@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save, Home, ContactRound, BriefcaseBusiness, Settings, MapPin, Mail, Phone, SlidersHorizontal, ChevronDown, MoreHorizontal } from "lucide-react";
+import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save, Home, ContactRound, BriefcaseBusiness, Settings, MapPin, Mail, Phone, SlidersHorizontal, ChevronDown, MoreHorizontal, FileSpreadsheet, FileText } from "lucide-react";
 
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
@@ -26,6 +26,8 @@ export default function App() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [filters, setFilters] = useState({ name: "", location: "", company: "", title: "", industry: "", revealed: "all", status: "all" });
   const [selectedProfiles, setSelectedProfiles] = useState([]);
+  const [exportMenuFor, setExportMenuFor] = useState(null);
+  const [exportingFormat, setExportingFormat] = useState("");
 
   
 
@@ -272,6 +274,145 @@ async function confirmDelete() {
     setDeleting(false);
   }
 }
+
+
+  function getExportProfiles(profile = null) {
+    if (profile) return [profile];
+    if (selectedProfiles.length) {
+      return filtered.filter(item => selectedProfiles.includes(String(item.id)));
+    }
+    return filtered;
+  }
+
+  function exportRows(sourceProfiles) {
+    return sourceProfiles.map(profile => ({
+      "Name": profile.name || "Not Available",
+      "Designation": profile.designation || profile.headline || "Not Available",
+      "Company": profile.company || "Not Available",
+      "Location": [profile.city, profile.country].filter(value => value && value !== "Not Available").join(", ") || profile.location || "Not Available",
+      "Business Email": profile.email || "Not Available",
+      "Personal Email": profile.personalEmail || "Not Available",
+      "Phone": profile.phone || "Not Available"
+    }));
+  }
+
+  async function exportProfiles(format, profile = null) {
+    const sourceProfiles = getExportProfiles(profile);
+    if (!sourceProfiles.length) {
+      setNotice("Export panna profiles available illa.");
+      setExportMenuFor(null);
+      return;
+    }
+
+    setExportingFormat(format);
+    setError("");
+    setNotice("");
+    try {
+      const rows = exportRows(sourceProfiles);
+      const dateStamp = new Date().toISOString().slice(0, 10);
+
+      if (format === "excel") {
+        const ExcelJS = (await import("exceljs")).default;
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = "LinkedIn Lead List";
+        workbook.created = new Date();
+        workbook.subject = "LinkedIn profile contact list";
+        workbook.title = "LinkedIn Lead List";
+        const sheet = workbook.addWorksheet("Lead List", {
+          views: [{ state: "frozen", ySplit: 4 }],
+          properties: { defaultRowHeight: 22 }
+        });
+
+        sheet.mergeCells("A1:G1");
+        sheet.getCell("A1").value = "LINKEDIN LEAD LIST";
+        sheet.getCell("A1").font = { name: "Aptos Display", size: 18, bold: true, color: { argb: "FFFFFFFF" } };
+        sheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1769AA" } };
+        sheet.getCell("A1").alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+        sheet.getRow(1).height = 38;
+
+        sheet.mergeCells("A2:G2");
+        sheet.getCell("A2").value = `Exported on ${new Date().toLocaleString()}  •  ${rows.length} profile(s)`;
+        sheet.getCell("A2").font = { name: "Aptos", size: 10, italic: true, color: { argb: "FF526579" } };
+        sheet.getCell("A2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF3FB" } };
+        sheet.getCell("A2").alignment = { vertical: "middle", indent: 1 };
+        sheet.getRow(2).height = 25;
+        sheet.addRow([]);
+
+        const headers = Object.keys(rows[0]);
+        const headerRow = sheet.addRow(headers);
+        headerRow.height = 30;
+        headerRow.eachCell(cell => {
+          cell.font = { name: "Aptos", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF245B86" } };
+          cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+          cell.border = { bottom: { style: "medium", color: { argb: "FF42B7C5" } } };
+        });
+
+        rows.forEach((record, index) => {
+          const row = sheet.addRow(headers.map(header => record[header]));
+          row.height = 28;
+          row.eachCell(cell => {
+            cell.font = { name: "Aptos", size: 10, color: { argb: "FF26364A" } };
+            cell.alignment = { vertical: "middle", wrapText: true };
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: index % 2 === 0 ? "FFF3F8FC" : "FFFFFFFF" } };
+            cell.border = { bottom: { style: "hair", color: { argb: "FFDCE6EF" } } };
+          });
+        });
+        [25, 32, 25, 27, 34, 34, 20].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+        sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4 + rows.length, column: 7 } };
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `linkedin-lead-list-${dateStamp}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } else {
+        const { jsPDF } = await import("jspdf");
+        const autoTableModule = await import("jspdf-autotable");
+        const autoTable = autoTableModule.default;
+        const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+        doc.setFillColor(23, 105, 170);
+        doc.rect(0, 0, 297, 29, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(18);
+        doc.text("LINKEDIN LEAD LIST", 14, 13);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text(`Exported on ${new Date().toLocaleString()}  |  ${rows.length} profile(s)`, 14, 21);
+        autoTable(doc, {
+          startY: 35,
+          head: [Object.keys(rows[0])],
+          body: rows.map(row => Object.values(row)),
+          theme: "grid",
+          margin: { left: 12, right: 12, bottom: 18 },
+          styles: { font: "helvetica", fontSize: 7.5, cellPadding: 3, textColor: [38, 54, 74], lineColor: [220, 230, 239], lineWidth: 0.15, overflow: "linebreak" },
+          headStyles: { fillColor: [36, 91, 134], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+          alternateRowStyles: { fillColor: [241, 247, 252] },
+          didDrawPage: () => {
+            const pageCount = doc.internal.getNumberOfPages();
+            doc.setFontSize(8);
+            doc.setTextColor(120, 132, 146);
+            doc.text("Confidential • LinkedIn Lead List", 12, 202);
+            doc.text(`Page ${doc.internal.getCurrentPageInfo().pageNumber} of ${pageCount}`, 285, 202, { align: "right" });
+          }
+        });
+        doc.save(`linkedin-lead-list-${dateStamp}.pdf`);
+      }
+
+      setNotice(`${format === "excel" ? "Excel" : "PDF"} export downloaded successfully (${rows.length} profile(s)).`);
+      setExportMenuFor(null);
+    } catch (err) {
+      console.error("Export failed:", err);
+      setError("Export failed. Please try again.");
+    } finally {
+      setExportingFormat("");
+    }
+  }
 
 
   async function logout() {
@@ -699,7 +840,7 @@ async function confirmDelete() {
           </div></td>
           <td><div className="companyCell"><span className="companyMark">{(profile.company || "C").charAt(0).toUpperCase()}</span><div><strong>{profile.company || "Not Available"}</strong><span><MapPin size={12}/>{[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}</span></div></div></td>
           <td><div className="contactCell"><span><Mail size={14}/><span>{profile.email || "Not Available"}</span></span>{profile.personalEmail && profile.personalEmail !== profile.email && <span className="secondaryContact"><Mail size={14}/><span>{profile.personalEmail}</span></span>}<span><Phone size={14}/><span>{profile.phone || "Not Available"}</span></span></div></td>
-          <td><div className="actionButtons"><button className="viewBtn" type="button" onClick={() => setViewingProfile(profile)} title="View full details">View</button><button className="editBtn" type="button" onClick={() => startEdit(profile)} title="Edit profile">Edit</button><button className="deleteBtn" type="button" onClick={() => deleteProfile(profile)} title="Delete profile"><MoreHorizontal size={15}/></button></div></td>
+          <td><div className="actionButtons"><button className="viewBtn" type="button" onClick={() => setViewingProfile(profile)} title="View full details">View</button><button className="editBtn" type="button" onClick={() => startEdit(profile)} title="Edit profile">Edit</button><button className="deleteBtn" type="button" onClick={() => deleteProfile(profile)} title="Delete profile"><MoreHorizontal size={15}/></button><div className="rowExportWrap"><button className="exportBtn" type="button" onClick={() => setExportMenuFor(current => current === String(profile.id) ? null : String(profile.id))} aria-expanded={exportMenuFor === String(profile.id)} title="Export profiles"><DownloadCloud size={13}/>Export<ChevronDown size={12}/></button>{exportMenuFor === String(profile.id) && <div className="exportDropdown"><button type="button" onClick={() => exportProfiles("excel")} disabled={Boolean(exportingFormat)}><FileSpreadsheet size={15}/>Excel (.xlsx)</button><button type="button" onClick={() => exportProfiles("pdf")} disabled={Boolean(exportingFormat)}><FileText size={15}/>PDF (.pdf)</button></div>}</div></div></td>
         </tr>
       ))
     )}</tbody>
