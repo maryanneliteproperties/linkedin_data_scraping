@@ -117,6 +117,7 @@ export function setupAuth(app, dataDir, asText) {
       }
       const users = await readUsers();
       if (users.some((item) => item.email.toLowerCase() === email)) return res.status(409).json({ message: "An account with this email already exists." });
+      if (users.some((item) => item.role === role && verifyPin(pin, item))) return res.status(409).json({ message: "This PIN is already assigned to another user with the same role. Choose a unique PIN." });
       const credentials = hashPin(pin);
       const user = { id: crypto.randomUUID(), name, email, role, pinSalt: credentials.salt, pinHash: credentials.hash, createdAt: new Date().toISOString(), createdBy: req.authUser.id };
       users.push(user);
