@@ -22,6 +22,31 @@ async function run() {
   const oldUsers = await readJson("users.json");
   const oldProfiles = await readJson("profiles.json");
   if (!Array.isArray(oldUsers) || !Array.isArray(oldProfiles)) throw new Error("Legacy JSON data must contain arrays.");
+
+  // This repository also contains a historical Git-conflict backup. Recover the
+  // stashed JSON side of that file so its additional profile is not silently lost.
+  let backupProfiles = [];
+  try {
+    const backupText = await fs.readFile(path.join(here, "data", "profiles-conflict-backup.json"), "utf8");
+    const separator = "\\n=======\\n";
+    const endMarker = "\\n>>>>>>> Stashed changes";
+    if (backupText.includes(separator) && backupText.includes(endMarker)) {
+      backupProfiles = JSON.parse(backupText.slice(backupText.indexOf(separator) + separator.length, backupText.indexOf(endMarker)));
+    } else {
+      backupProfiles = JSON.parse(backupText);
+    }
+    if (!Array.isArray(backupProfiles)) throw new Error("Conflict backup does not contain a profile array.");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw new Error("Could not safely read profiles-conflict-backup.json: " + error.message);
+  }
+  const knownProfileIds = new Set(oldProfiles.map((profile) => String(profile.id)));
+  for (const profile of backupProfiles) {
+    if (!knownProfileIds.has(String(profile.id))) {
+      oldProfiles.push(profile);
+      knownProfileIds.add(String(profile.id));
+    }
+  }
+
   await ensureEmpty("users");
   await ensureEmpty("profiles");
 
