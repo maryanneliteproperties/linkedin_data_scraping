@@ -10,6 +10,31 @@ React + Vite frontend and Node.js + Express backend for viewing and storing auth
 
 The frontend does not show manual **Add Profile** or file **Import** controls.
 
+## Role-based PIN login
+
+The Lead List now uses three application roles: **Admin**, **Sub Admin**, and **Employee**. All three roles can sign in with a role and PIN and access the Lead List. Only Admin can create Sub Admin and Employee accounts.
+
+### First-time Admin setup
+1. In the backend folder, copy `.env.example` to `.env`.
+2. Set `ADMIN_NAME`, `ADMIN_EMAIL`, and a private 4-8 digit `ADMIN_PIN`. Do not use the sample PIN.
+3. Start the backend with `npm run dev`. If `backend/data/users.json` does not exist, the first Admin account is created automatically.
+4. Sign in to ProfileDesk by selecting **Admin** and entering that PIN.
+5. Use the **User Accounts** panel to create Employee and Sub Admin accounts. Each account needs a unique email and a PIN that is unique within its role.
+
+PINs are stored as salted scrypt hashes, not plain text. The browser session uses an HttpOnly cookie and expires after 12 hours. Sessions are held in backend memory and are cleared when the backend restarts.
+
+The existing `backend/data/profiles.json` profile store is not rewritten by account provisioning. The new `backend/data/users.json` file is local account data and is excluded from Git.
+
+### API access notes
+- `POST /api/auth/login` – role + PIN login
+- `GET /api/auth/me` – current ProfileDesk account
+- `POST /api/auth/logout` – end the ProfileDesk session
+- `GET /api/admin/users` and `POST /api/admin/users` – Admin-only account listing and creation
+- Profile list, detail, update, delete, and SignalHire APIs require an authenticated session. Bulk profile import additionally requires Admin.
+- `POST /api/profiles` remains available without a ProfileDesk session for the existing browser extension profile-save integration. Keep this endpoint and its CORS exposure in mind when deploying.
+
+The JSON-based user and profile stores and in-memory sessions are intended for local development. Before production or multi-user deployment, move account/profile storage to a persistent database and sessions to a shared persistent session store.
+
 ## Local development
 
 Backend setup:
