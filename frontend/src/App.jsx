@@ -153,12 +153,16 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (authUser) { setLeadTab("admin"); setSelectedProfiles([]); }
+  }, [authUser?.id]);
+
+  useEffect(() => {
     if (authUser && activePage === "assigned-tasks") loadAssignedTasks();
   }, [authUser, activePage]);
 
   const tabProfiles = useMemo(() => profiles.filter((profile) => {
     const assignment = profile.assignment;
-    if (authUser?.role === "Sub Admin") return leadTab === "admin" ? assignment?.assignedToId === authUser.id && assignment?.assignedByRole === "Admin" : !assignment;
+    if (authUser?.role === "Sub Admin") return leadTab === "admin" ? assignment?.assignedToId === authUser.id && assignment?.assignedByRole === "Admin" : profile.createdById === authUser.id;
     if (authUser?.role === "Employee") return assignment?.assignedToId === authUser.id && assignment?.assignedByRole === (leadTab === "admin" ? "Admin" : "Sub Admin");
     return !assignment;
   }), [profiles, authUser, leadTab]);
@@ -202,7 +206,7 @@ export default function App() {
     const today = new Date();
     const isToday = assignedAt && assignedAt.getFullYear() === today.getFullYear() && assignedAt.getMonth() === today.getMonth() && assignedAt.getDate() === today.getDate();
     return (taskAssignedToFilter === "all" || assignment.assignedToId === taskAssignedToFilter)
-      && (!taskDateFilter || (assignedAt && assignedAt.toISOString().slice(0, 10) === taskDateFilter))
+      && (!taskDateFilter || (assignedAt && [assignedAt.getFullYear(), String(assignedAt.getMonth() + 1).padStart(2, "0"), String(assignedAt.getDate()).padStart(2, "0")].join("-") === taskDateFilter))
       && (!taskTodayOnly || isToday);
   }), [assignedTasks, taskAssignedToFilter, taskDateFilter, taskTodayOnly]);
 
@@ -1047,7 +1051,7 @@ async function confirmDelete() {
     <tbody>{loading ? (
       <tr><td colSpan="5" className="empty">Loading profiles...</td></tr>
     ) : filtered.length === 0 ? (
-      <tr><td colSpan="5" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
+      <tr><td colSpan="5" className="empty">{authUser.role === "Sub Admin" && leadTab === "own" ? "Your own profiles will appear here once profile ownership tracking is enabled." : "No profiles found. Save profile details from the LinkedIn extension."}</td></tr>
     ) : (
       paginatedProfiles.map((profile) => (
         <tr key={profile.id}>
@@ -1120,7 +1124,7 @@ async function confirmDelete() {
           {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
           {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
           <section className="tablePanel assignedTasksPanel">
-            <div className="tableToolbar"><div><h2>Assigned Task List</h2><p>{filteredAssignedTasks.length} assigned profiles</p></div><div className="taskFilters"><label>Assigned To<select value={taskAssignedToFilter} onChange={(e) => setTaskAssignedToFilter(e.target.value)}><option value="all">All</option>{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Date<input type="date" value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} /></label><label className="todayFilter"><input type="checkbox" checked={taskTodayOnly} onChange={(e) => setTaskTodayOnly(e.target.checked)} />Today</label><button type="button" className="iconBtn" onClick={loadAssignedTasks} title="Refresh"><RefreshCw size={17}/></button></div></div>
+            <div className="tableToolbar"><div><h2>Assigned Task List</h2><p>{filteredAssignedTasks.length} assigned profiles</p></div><div className="taskFilters"><label>Assigned To<select value={taskAssignedToFilter} onChange={(e) => setTaskAssignedToFilter(e.target.value)}><option value="all">All</option>{authUser.role === "Sub Admin" && <option value={authUser.id}>Me</option>}{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Date<input type="date" value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} /></label><label className="todayFilter"><input type="checkbox" checked={taskTodayOnly} onChange={(e) => setTaskTodayOnly(e.target.checked)} />Today</label><button type="button" className="iconBtn" onClick={loadAssignedTasks} title="Refresh"><RefreshCw size={17}/></button></div></div>
             <div className="tableWrap"><table className="assignedTaskTable"><thead><tr>{authUser.role !== "Employee" && <th>ASSIGNED TO</th>}<th>PROFILE</th><th>COMPANY</th><th>ASSIGNED BY</th><th>ASSIGNED DATE</th><th>LINKEDIN</th></tr></thead><tbody>{filteredAssignedTasks.length === 0 ? <tr><td colSpan={authUser.role === "Employee" ? 5 : 6} className="empty">No assigned tasks found.</td></tr> : filteredAssignedTasks.map((profile) => <tr key={profile.id}>{authUser.role !== "Employee" && <td><strong>{profile.assignment?.assignedToName || "Not Available"}</strong><small>{profile.assignment?.assignedToRole || ""}</small></td>}<td><strong>{profile.name || "Not Available"}</strong><small>{profile.designation || profile.headline || ""}</small></td><td>{profile.company || "Not Available"}</td><td>{profile.assignment?.assignedByName || "Not Available"}<small>{profile.assignment?.assignedByRole || ""}</small></td><td>{profile.assignment?.assignedAt ? new Date(profile.assignment.assignedAt).toLocaleDateString() : "Not Available"}</td><td>{profile.profileUrl && profile.profileUrl !== "Not Available" ? <a className="profileLink" href={profile.profileUrl} target="_blank" rel="noopener noreferrer">Open Profile ↗</a> : "Not Available"}</td></tr>)}</tbody></table></div>
           </section>
           <footer>ProfileDesk <span>•</span> React + Express</footer>
