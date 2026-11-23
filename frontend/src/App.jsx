@@ -20,6 +20,10 @@ export default function App() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [adminUsers, setAdminUsers] = useState([]);
+  const [activePage, setActivePage] = useState(window.location.hash === "#employee-accounts" ? "employees" : "leads");
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [accountToDelete, setAccountToDelete] = useState(null);
+  const [accountDeleteBusy, setAccountDeleteBusy] = useState(false);
   const [newAccount, setNewAccount] = useState({ name: "", email: "", pin: "", role: "Employee" });
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
@@ -95,6 +99,19 @@ export default function App() {
       document.removeEventListener("visibilitychange", refreshProfiles);
     };
   }, [authUser]);
+
+  useEffect(() => {
+    const syncRoute = () => setActivePage(window.location.hash === "#employee-accounts" ? "employees" : "leads");
+    window.addEventListener("popstate", syncRoute);
+    window.addEventListener("hashchange", syncRoute);
+    return () => { window.removeEventListener("popstate", syncRoute); window.removeEventListener("hashchange", syncRoute); };
+  }, []);
+
+  function navigateToPage(page) {
+    const hash = page === "employees" ? "#employee-accounts" : "";
+    if (window.location.hash !== hash) window.history.pushState(null, "", window.location.pathname + window.location.search + hash);
+    setActivePage(page);
+  }
 
   useEffect(() => {
     if (authUser?.role !== "Admin") return;
@@ -202,20 +219,57 @@ export default function App() {
     setAccountBusy(true);
     setAccountMessage("");
     try {
-      const response = await fetch(API + "/admin/users", {
-        method: "POST",
+      const isEditing = Boolean(editingAccount);
+      const response = await fetch(API + (isEditing ? "/admin/users/" + encodeURIComponent(editingAccount.id) : "/admin/users"), {
+        method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(newAccount)
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || "Account creation failed.");
-      setAdminUsers((current) => [...current, result.user]);
+      if (!response.ok) throw new Error(result.message || (isEditing ? "Account update failed." : "Account creation failed."));
+      setAdminUsers((current) => isEditing
+        ? current.map((user) => user.id === result.user.id ? result.user : user)
+        : [...current, result.user]);
       setNewAccount({ name: "", email: "", pin: "", role: "Employee" });
-      setAccountMessage("Account created successfully.");
+      setEditingAccount(null);
+      setAccountMessage(isEditing ? "Account updated successfully." : "Account created successfully.");
     } catch (err) {
-      setAccountMessage(err.message || "Unable to create account.");
+      setAccountMessage(err.message || "Unable to save account.");
     } finally { setAccountBusy(false); }
+  }
+
+  function startEditAccount(user) {
+    setEditingAccount(user);
+    setNewAccount({ name: user.name || "", email: user.email || "", pin: "", role: user.role || "Employee" });
+    setAccountMessage("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEditAccount() {
+    setEditingAccount(null);
+    setNewAccount({ name: "", email: "", pin: "", role: "Employee" });
+    setAccountMessage("");
+  }
+
+  async function confirmDeleteAccount() {
+    if (!accountToDelete) return;
+    setAccountDeleteBusy(true);
+    setAccountMessage("");
+    try {
+      const response = await fetch(API + "/admin/users/" + encodeURIComponent(accountToDelete.id), {
+        method: "DELETE",
+        credentials: "include"
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Account deletion failed.");
+      setAdminUsers((current) => current.filter((user) => user.id !== accountToDelete.id));
+      if (editingAccount?.id === accountToDelete.id) cancelEditAccount();
+      setAccountToDelete(null);
+      setAccountMessage("Account deleted successfully.");
+    } catch (err) {
+      setAccountMessage(err.message || "Unable to delete account.");
+    } finally { setAccountDeleteBusy(false); }
   }
 
   async function saveMyProfile() {
@@ -511,7 +565,8 @@ async function confirmDelete() {
           <button type="button" className="sidebarNavItem" title="Home"><Home size={20}/></button>
           <button type="button" className="sidebarNavItem" title="Search"><Search size={20}/></button>
           <button type="button" className="sidebarNavItem" title="Companies"><BriefcaseBusiness size={20}/></button>
-          <button type="button" className="sidebarNavItem active" title="Lead List"><ContactRound size={20}/></button>
+          <button type="button" onClick={() => navigateToPage("leads")} className={"sidebarNavItem" + (activePage === "leads" ? " active" : "")} title="Lead List"><ContactRound size={20}/></button>
+          {authUser.role === "Admin" && <button type="button" onClick={() => navigateToPage("employees")} className={"sidebarNavItem" + (activePage === "employees" ? " active" : "")} title="Employee Account" aria-label="Employee Account"><Users size={20}/></button>}
           <button type="button" className="sidebarNavItem" title="Settings"><Settings size={20}/></button>
         </nav>
         <div className="sidebarBottom"><Linkedin size={19}/></div>
@@ -535,6 +590,8 @@ async function confirmDelete() {
         </div> */}
       </header>
 
+      {activePage === "leads" ? (
+        <>
       <section className="hero">
         <div><p className="eyebrow">LINKEDIN CONTACTS</p><h1>Lead List</h1><p className="subtext">Manage saved LinkedIn profiles and contact details.</p></div>
       </section>
@@ -542,21 +599,6 @@ async function confirmDelete() {
         <span>{authUser.name} · {authUser.role}</span>
         <button type="button" className="secondaryBtn" onClick={logout}><LogOut size={15}/> Logout</button>
       </div>
-      {authUser.role === "Admin" && (
-        <section className="accountAdminPanel">
-          <div className="accountPanelHeading"><div><h2>User Accounts</h2><p>Create Sub Admin and Employee logins</p></div></div>
-          <form className="accountCreateForm" onSubmit={createUserAccount}>
-            <label>Name<input value={newAccount.name} onChange={(e) => setNewAccount(v => ({ ...v, name: e.target.value }))} required placeholder="Full name"/></label>
-            <label>Email<input type="email" value={newAccount.email} onChange={(e) => setNewAccount(v => ({ ...v, email: e.target.value }))} required placeholder="Email address"/></label>
-            <label>PIN<input type="password" inputMode="numeric" maxLength={8} value={newAccount.pin} onChange={(e) => setNewAccount(v => ({ ...v, pin: e.target.value.replace(/[^0-9]/g, "") }))} required placeholder="4-8 digit PIN"/></label>
-            <label>Role<select value={newAccount.role} onChange={(e) => setNewAccount(v => ({ ...v, role: e.target.value }))}><option value="Employee">Employee</option><option value="Sub Admin">Sub Admin</option></select></label>
-            <button className="primaryBtn" type="submit" disabled={accountBusy || newAccount.pin.length < 4}>{accountBusy ? "Creating..." : "Create Account"}</button>
-          </form>
-          {accountMessage && <p className="accountMessage">{accountMessage}</p>}
-          <div className="accountList">{adminUsers.map((user) => <div className="accountListRow" key={user.id}><span><strong>{user.name}</strong><small>{user.email}</small></span><span>{user.role}</span></div>)}</div>
-        </section>
-      )}
-
       {/* <form className="extractPanel" onSubmit={extractProfile}>
         <div className="extractHeading"><div><h2>Extract LinkedIn Profile</h2><p>Other members' profile extraction requires separate LinkedIn-approved API access.</p></div><span className="extractIcon"><DownloadCloud size={20}/></span></div>
         <div className="extractControls">
@@ -992,6 +1034,55 @@ async function confirmDelete() {
         </div>
       </div>
       <footer>ProfileDesk <span>•</span> React + Express</footer>
+        </>
+      ) : (
+        <>
+          <div className="sessionBar">
+            <span>{authUser.name} · {authUser.role}</span>
+            <button type="button" className="secondaryBtn" onClick={logout}><LogOut size={15}/> Logout</button>
+          </div>
+          <section className="hero employeeAccountHero">
+            <div><p className="eyebrow">ACCOUNT MANAGEMENT</p><h1>Employee Account</h1><p className="subtext">Create and manage Sub Admin and Employee logins.</p></div>
+          </section>
+          {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
+          {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
+          <section className="accountAdminPanel employeeAccountPanel">
+            <div className="accountPanelHeading"><div><h2>{editingAccount ? "Edit Employee Account" : "Create Employee Account"}</h2><p>{editingAccount ? "Update account details. Leave PIN blank to keep the current PIN." : "Add a Sub Admin or Employee login."}</p></div></div>
+            <form className="accountCreateForm" onSubmit={createUserAccount}>
+              <label>Name<input value={newAccount.name} onChange={(e) => setNewAccount(v => ({ ...v, name: e.target.value }))} required placeholder="Full name"/></label>
+              <label>Email<input type="email" value={newAccount.email} onChange={(e) => setNewAccount(v => ({ ...v, email: e.target.value }))} required placeholder="Email address"/></label>
+              <label>PIN<input type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={newAccount.pin} onChange={(e) => setNewAccount(v => ({ ...v, pin: e.target.value.replace(/[^0-9]/g, "") }))} required={!editingAccount} placeholder={editingAccount ? "Leave blank to keep current PIN" : "4-8 digit PIN"}/></label>
+              <label>Role<select value={newAccount.role} onChange={(e) => setNewAccount(v => ({ ...v, role: e.target.value }))}><option value="Employee">Employee</option><option value="Sub Admin">Sub Admin</option></select></label>
+              <div className="accountFormActions"><button className="primaryBtn" type="submit" disabled={accountBusy || (!editingAccount && newAccount.pin.length < 4) || (Boolean(newAccount.pin) && newAccount.pin.length < 4)}>{accountBusy ? "Saving..." : editingAccount ? "Update Account" : "Create Account"}</button>{editingAccount && <button className="secondaryBtn" type="button" onClick={cancelEditAccount} disabled={accountBusy}>Cancel</button>}</div>
+            </form>
+            {accountMessage && <p className="accountMessage">{accountMessage}</p>}
+          </section>
+          <section className="accountAdminPanel employeeAccountPanel">
+            <div className="accountPanelHeading"><div><h2>Employee List</h2><p>{adminUsers.filter((user) => user.role !== "Admin").length} accounts</p></div></div>
+            <div className="tableWrap accountTableWrap">
+              <table className="accountTable">
+                <thead><tr><th>Name</th><th>Email</th><th>PIN</th><th>Role</th><th>Action</th></tr></thead>
+                <tbody>
+                  {adminUsers.filter((user) => user.role !== "Admin").length === 0 ? <tr><td colSpan="5" className="empty">No employee accounts created yet.</td></tr> : adminUsers.filter((user) => user.role !== "Admin").map((user) => (
+                    <tr key={user.id}>
+                      <td><strong>{user.name}</strong></td><td>{user.email}</td><td><span className="maskedPin" aria-label="PIN hidden for security">••••••</span></td><td><span className="accountRole">{user.role}</span></td>
+                      <td><div className="accountActions"><button type="button" className="editBtn" onClick={() => startEditAccount(user)}>Edit</button><button type="button" className="deleteBtn" onClick={() => setAccountToDelete(user)}>Delete</button></div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          {accountToDelete && (
+            <div className="modalBackdrop" onClick={() => !accountDeleteBusy && setAccountToDelete(null)}>
+              <div className="detailsModal accountDeleteModal" role="dialog" aria-modal="true" aria-labelledby="deleteAccountTitle" onClick={(e) => e.stopPropagation()}>
+                <div className="modalHeader"><div><p className="eyebrow">CONFIRM ACTION</p><h2 id="deleteAccountTitle">Delete Account?</h2><p>Are you sure you want to delete {accountToDelete.name}'s account? This action cannot be undone.</p></div></div>
+                <div className="formActions"><button type="button" className="secondaryBtn" onClick={() => setAccountToDelete(null)} disabled={accountDeleteBusy}>Cancel</button><button type="button" className="confirmDeleteBtn" onClick={confirmDeleteAccount} disabled={accountDeleteBusy}>{accountDeleteBusy ? "Deleting..." : "Yes, Delete"}</button></div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
     </main>
   );
