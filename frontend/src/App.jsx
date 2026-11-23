@@ -250,7 +250,6 @@ export default function App() {
     setEditingAccount(user);
     setNewAccount({ username: user.username || "", name: user.name || "", email: user.email || "", pin: "", role: user.role || "Employee" });
     setAccountMessage("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function cancelEditAccount() {
@@ -1061,14 +1060,14 @@ async function confirmDelete() {
           {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
           {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
           <section className="accountAdminPanel employeeAccountPanel">
-            <div className="accountPanelHeading"><div><h2>{editingAccount ? "Edit Employee Account" : "Create Employee Account"}</h2><p>{editingAccount ? "Update account details. Leave PIN blank to keep the current PIN." : "Add a Sub Admin or Employee login."}</p></div></div>
+            <div className="accountPanelHeading"><div><h2>Create Employee Account</h2><p>Add a Sub Admin or Employee login.</p></div></div>
             <form className="accountCreateForm" onSubmit={createUserAccount}>
               <label>User Name<input value={newAccount.username} onChange={(e) => setNewAccount(v => ({ ...v, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "") }))} required minLength={3} maxLength={30} autoComplete="username" placeholder="Login user name"/></label>
               <label>Name<input value={newAccount.name} onChange={(e) => setNewAccount(v => ({ ...v, name: e.target.value }))} required placeholder="Full name"/></label>
               <label>Email<input type="email" value={newAccount.email} onChange={(e) => setNewAccount(v => ({ ...v, email: e.target.value }))} required placeholder="Email address"/></label>
-              <label>PIN<input type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={newAccount.pin} onChange={(e) => setNewAccount(v => ({ ...v, pin: e.target.value.replace(/[^0-9]/g, "") }))} required={!editingAccount} placeholder={editingAccount ? "Leave blank to keep current PIN" : "4-8 digit PIN"}/></label>
+              <label>PIN<input type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={newAccount.pin} onChange={(e) => setNewAccount(v => ({ ...v, pin: e.target.value.replace(/[^0-9]/g, "") }))} required minLength={4} placeholder="4-8 digit PIN"/></label>
               <label>Role<select value={newAccount.role} onChange={(e) => setNewAccount(v => ({ ...v, role: e.target.value }))}><option value="Employee">Employee</option><option value="Sub Admin">Sub Admin</option></select></label>
-              <div className="accountFormActions"><button className="primaryBtn" type="submit" disabled={accountBusy || (!editingAccount && newAccount.pin.length < 4) || (Boolean(newAccount.pin) && newAccount.pin.length < 4)}>{accountBusy ? "Saving..." : editingAccount ? "Update Account" : "Create Account"}</button>{editingAccount && <button className="secondaryBtn" type="button" onClick={cancelEditAccount} disabled={accountBusy}>Cancel</button>}</div>
+              <div className="accountFormActions"><button className="primaryBtn" type="submit" disabled={accountBusy || newAccount.pin.length < 4}>{accountBusy ? "Saving..." : "Create Account"}</button></div>
             </form>
             {accountMessage && <p className="accountMessage">{accountMessage}</p>}
           </section>
@@ -1088,6 +1087,25 @@ async function confirmDelete() {
               </table>
             </div>
           </section>
+          {editingAccount && (
+            <div className="modalBackdrop" onClick={() => !accountBusy && cancelEditAccount()}>
+              <div className="detailsModal accountEditModal" role="dialog" aria-modal="true" aria-labelledby="editAccountTitle" onClick={(e) => e.stopPropagation()}>
+                <div className="modalHeader">
+                  <div><p className="eyebrow">ACCOUNT MANAGEMENT</p><h2 id="editAccountTitle">Edit Employee Account</h2><p>Update account details. Leave PIN blank to keep the current PIN.</p></div>
+                  <button type="button" className="closeBtn" onClick={cancelEditAccount} disabled={accountBusy} aria-label="Close">×</button>
+                </div>
+                <form className="accountCreateForm accountEditForm" onSubmit={createUserAccount}>
+                  <label>User Name<input value={newAccount.username} onChange={(e) => setNewAccount(v => ({ ...v, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "") }))} required minLength={3} maxLength={30} autoComplete="username" placeholder="Login user name"/></label>
+                  <label>Name<input value={newAccount.name} onChange={(e) => setNewAccount(v => ({ ...v, name: e.target.value }))} required placeholder="Full name"/></label>
+                  <label>Email<input type="email" value={newAccount.email} onChange={(e) => setNewAccount(v => ({ ...v, email: e.target.value }))} required placeholder="Email address"/></label>
+                  <label>PIN<input type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={newAccount.pin} onChange={(e) => setNewAccount(v => ({ ...v, pin: e.target.value.replace(/[^0-9]/g, "") }))} placeholder="Leave blank to keep current PIN"/></label>
+                  <label>Role<select value={newAccount.role} onChange={(e) => setNewAccount(v => ({ ...v, role: e.target.value }))}><option value="Employee">Employee</option><option value="Sub Admin">Sub Admin</option></select></label>
+                  <div className="accountFormActions"><button className="primaryBtn" type="submit" disabled={accountBusy || (Boolean(newAccount.pin) && newAccount.pin.length < 4)}>{accountBusy ? "Saving..." : "Update Account"}</button><button className="secondaryBtn" type="button" onClick={cancelEditAccount} disabled={accountBusy}>Cancel</button></div>
+                </form>
+                {accountMessage && <p className="accountMessage">{accountMessage}</p>}
+              </div>
+            </div>
+          )}
           {accountToDelete && (
             <div className="modalBackdrop" onClick={() => !accountDeleteBusy && setAccountToDelete(null)}>
               <div className="detailsModal accountDeleteModal" role="dialog" aria-modal="true" aria-labelledby="deleteAccountTitle" onClick={(e) => e.stopPropagation()}>
