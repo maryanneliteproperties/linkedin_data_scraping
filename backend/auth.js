@@ -102,7 +102,7 @@ export function setupAuth(app, _dataDir, asText) {
   });
 
   app.post("/api/extension/auth/logout", (req, res) => {
-    const token = String(req.headers.authorization || "").match(/^Bearer\\s+(.+)$/i)?.[1]?.trim();
+    const token = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
     if (token) sessions.delete(token);
     res.json({ success: true });
   });
