@@ -620,6 +620,9 @@ app.put("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
 
     const currentProfile = profiles[index];
     const assignment = currentProfile.assignment || null;
+    if (req.authUser.role === "Admin" && currentProfile.createdByRole === "Sub Admin") {
+      return res.status(403).json({ message: "Admin cannot edit profiles saved by Sub Admin." });
+    }
     if (req.authUser.role === "Employee" && assignment) {
       return res.status(403).json({ message: "Employees cannot edit assigned tasks." });
     }
@@ -658,6 +661,9 @@ app.delete("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
     }
 
     const assignment = profileToDelete.assignment || null;
+    if (req.authUser.role === "Admin" && profileToDelete.createdByRole === "Sub Admin") {
+      return res.status(403).json({ message: "Admin cannot delete profiles saved by Sub Admin." });
+    }
     if (req.authUser.role === "Employee" && assignment) {
       return res.status(403).json({ message: "Employees cannot delete assigned tasks." });
     }
