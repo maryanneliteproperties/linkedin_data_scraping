@@ -21,8 +21,11 @@ export function setupAuth(app, _dataDir, asText) {
   }
   function verifyPin(pin, user) {
     try {
-      const candidate = crypto.scryptSync(String(pin), user.pin_salt, 64);
-      const stored = Buffer.from(user.pin_hash, "hex");
+      const salt = user.pin_salt || user.pinSalt;
+      const hash = user.pin_hash || user.pinHash;
+      if (!salt || !hash) return false;
+      const candidate = crypto.scryptSync(String(pin), salt, 64);
+      const stored = Buffer.from(hash, "hex");
       return stored.length === candidate.length && crypto.timingSafeEqual(candidate, stored);
     } catch { return false; }
   }
