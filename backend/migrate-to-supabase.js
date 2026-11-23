@@ -50,6 +50,7 @@ async function run() {
   await ensureEmpty("users");
   await ensureEmpty("profiles");
 
+  const knownUserIds = new Set(oldUsers.map((user) => String(user.id)));
   const users = oldUsers.map((u) => ({
     id: u.id,
     username: u.role === "Admin" ? null : (String(u.username || "").trim().toLowerCase() || null),
@@ -59,23 +60,34 @@ async function run() {
     pin_salt: u.pinSalt || u.pin_salt,
     pin_hash: u.pinHash || u.pin_hash,
     created_at: u.createdAt || u.created_at || new Date().toISOString(),
-    created_by: u.createdBy || u.created_by || null,
+    created_by: knownUserIds.has(String(u.createdBy || u.created_by || "")) ? (u.createdBy || u.created_by) : null,
     updated_at: u.updatedAt || u.updated_at || null
   }));
-  for (let i = 0; i < users.length; i += 100) {
-    const { error } = await supabase.from("users").insert(users.slice(i, i + 100));
-    if (error) throw error;
-  }
-
   const profiles = oldProfiles.map((p) => ({
     id: Number(p.id),
     data: p,
     created_at: p.createdAt || new Date().toISOString(),
     updated_at: p.updatedAt || new Date().toISOString()
   }));
-  for (let i = 0; i < profiles.length; i += 100) {
-    const { error } = await supabase.from("profiles").insert(profiles.slice(i, i + 100));
-    if (error) throw error;
+  if (profiles.some((profile) => !Number.isSafeInteger(profile.id))) {
+    throw new Error("One or more legacy profiles have a missing or invalid numeric ID. No rows have been imported.");
+  }
+
+  try {
+    for (let i = 0; i < users.length; i += 100) {
+      const { error } = await supabase.from("users").insert(users.slice(i, i + 100));
+      if (error) throw error;
+    }
+    for (let i = 0; i < profiles.length; i += 100) {
+      const { error } = await supabase.from("profiles").insert(profiles.slice(i, i + 100));
+      if (error) throw error;
+    }
+  } catch (error) {
+    // Both tables were verified empty before import; clear any partial batches
+    // so the operator can safely correct the issue and rerun the migration.
+    await supabase.from("profiles").delete().gte("id", 0);
+    await supabase.from("users").delete().not("id", "is", null);
+    throw error;
   }
   console.log("Supabase migration complete: " + users.length + " user account(s), " + profiles.length + " profile(s).");
 }
