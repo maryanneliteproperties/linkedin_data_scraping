@@ -632,5 +632,8 @@ app.use((err, _req, res, _next) => {
 });
 
 auth.provisionInitialAdmin()
-  .catch((error) => console.error("[Auth] Initial Admin provisioning failed:", error.message))
-  .finally(() => app.listen(PORT, () => console.log("API running at http://localhost:" + PORT)));
+  .then(() => app.listen(PORT, () => console.log("API running at http://localhost:" + PORT)))
+  .catch((error) => {
+    console.error("[Startup] Supabase connection or Admin provisioning failed:", error.message);
+    process.exitCode = 1;
+  });
