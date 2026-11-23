@@ -28,8 +28,8 @@ async function run() {
   let backupProfiles = [];
   try {
     const backupText = await fs.readFile(path.join(here, "data", "profiles-conflict-backup.json"), "utf8");
-    const separator = "\\n=======\\n";
-    const endMarker = "\\n>>>>>>> Stashed changes";
+    const separator = "\n=======\n";
+    const endMarker = "\n>>>>>>> Stashed changes";
     if (backupText.includes(separator) && backupText.includes(endMarker)) {
       backupProfiles = JSON.parse(backupText.slice(backupText.indexOf(separator) + separator.length, backupText.indexOf(endMarker)));
     } else {
