@@ -285,6 +285,17 @@ async function confirmDelete() {
 
   return (
     <main className="page">
+      <aside className="appSidebar">
+        <div className="sidebarBrand">PD</div>
+        <nav aria-label="Main navigation">
+          <button type="button" className="sidebarNavItem" title="Home"><Home size={20}/></button>
+          <button type="button" className="sidebarNavItem" title="Search"><Search size={20}/></button>
+          <button type="button" className="sidebarNavItem" title="Companies"><BriefcaseBusiness size={20}/></button>
+          <button type="button" className="sidebarNavItem active" title="Lead List"><ContactRound size={20}/></button>
+          <button type="button" className="sidebarNavItem" title="Settings"><Settings size={20}/></button>
+        </nav>
+        <div className="sidebarBottom"><Linkedin size={19}/></div>
+      </aside>
       <header className="topbar">
         <div className="brand"><span className="brandIcon"><Linkedin size={22} /></span><div><strong>ProfileDesk</strong><small>LinkedIn data viewer</small></div></div>
         {/* <div className="authActions">
