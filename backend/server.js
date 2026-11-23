@@ -554,9 +554,15 @@ app.get("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
  * POST /api/profiles
  * Create or merge profile
  */
-app.post("/api/profiles", async (req, res, next) => {
+app.post("/api/profiles", auth.requireAuth, async (req, res, next) => {
   try {
+    if (!["Admin", "Sub Admin"].includes(req.authUser.role)) {
+      return res.status(403).json({ message: "Only Admin and Sub Admin can save LinkedIn profiles." });
+    }
     const profile = normalizeProfile(req.body);
+    profile.createdById = req.authUser.id;
+    profile.createdByName = req.authUser.name;
+    profile.createdByRole = req.authUser.role;
     const validationError = validateProfile(profile);
 
     if (validationError) {
@@ -567,7 +573,14 @@ app.post("/api/profiles", async (req, res, next) => {
     const dupIdx = duplicateIndex(profiles, profile);
 
     if (dupIdx !== -1) {
-      const merged = mergeExistingProfile(profiles[dupIdx], profile);
+      const existing = profiles[dupIdx];
+      if (existing.createdById && String(existing.createdById) !== String(req.authUser.id)) {
+        return res.status(409).json({ message: "This LinkedIn profile is already saved by another user." });
+      }
+      const merged = mergeExistingProfile(existing, profile);
+      merged.createdById = req.authUser.id;
+      merged.createdByName = req.authUser.name;
+      merged.createdByRole = req.authUser.role;
       profiles[dupIdx] = merged;
       await writeProfiles(profiles);
 
