@@ -42,7 +42,8 @@ export function setupAuth(app, _dataDir, asText) {
   }
   async function requireAuth(req, res, next) {
     try {
-      const token = cookies(req.headers.cookie)[cookieName];
+      const bearer = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1];
+      const token = bearer || cookies(req.headers.cookie)[cookieName];
       const session = token ? sessions.get(token) : null;
       if (!session || session.expiresAt < Date.now()) {
         if (token) sessions.delete(token);
@@ -79,6 +80,33 @@ export function setupAuth(app, _dataDir, asText) {
     console.log("[Auth] Initial Admin account provisioned in Supabase.");
   }
 
+  app.post("/api/extension/auth/login", async (req, res, next) => {
+    try {
+      const role = asText(req.body?.role);
+      const username = asText(req.body?.username).toLowerCase();
+      const pin = asText(req.body?.pin);
+      if (!["Admin", "Sub Admin"].includes(role) || !pinPattern.test(pin) ||
+          (role === "Sub Admin" && !usernamePattern.test(username))) {
+        return res.status(400).json({ message: role === "Admin"
+          ? "Select Admin and enter your 4-8 digit PIN."
+          : "Enter a valid Sub Admin user name and 4-8 digit PIN." });
+      }
+      const users = await getUsers();
+      const user = users.find((item) => item.role === role &&
+        (role === "Admin" || item.username?.toLowerCase() === username) && verifyPin(pin, item));
+      if (!user) return res.status(401).json({ message: role === "Admin" ? "Incorrect Admin PIN." : "Incorrect user name, role or PIN." });
+      const token = crypto.randomBytes(32).toString("hex");
+      sessions.set(token, { userId: user.id, expiresAt: Date.now() + maxAge * 1000 });
+      res.json({ authenticated: true, token, user: toSafeUser(user) });
+    } catch (error) { next(error); }
+  });
+
+  app.post("/api/extension/auth/logout", (req, res) => {
+    const token = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+    if (token) sessions.delete(token);
+    res.json({ success: true });
+  });
+
   app.post("/api/auth/login", async (req, res, next) => {
     try {
       const role = asText(req.body?.role);
@@ -104,7 +132,8 @@ export function setupAuth(app, _dataDir, asText) {
 
   app.get("/api/auth/me", requireAuth, (req, res) => res.json({ authenticated: true, user: toSafeUser(req.authUser) }));
   app.post("/api/auth/logout", (req, res) => {
-    const token = cookies(req.headers.cookie)[cookieName];
+    const bearer = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1];
+    const token = bearer || cookies(req.headers.cookie)[cookieName];
     if (token) sessions.delete(token);
     const sameSite = process.env.NODE_ENV === "production" ? "None; Secure" : "Lax";
     res.setHeader("Set-Cookie", cookieName + "=; HttpOnly; Path=/; Max-Age=0; SameSite=" + sameSite);

@@ -20,6 +20,7 @@
   let cachedProfile = null;
   let scrapeTimer = null;
   let isSavingProfile = false;
+  let extensionUser = null;
 
   const PROFILE_STORAGE_PREFIX = "linkedin_profile:";
 
@@ -1065,10 +1066,63 @@
     }
 
     render();
+    chrome.runtime.sendMessage({ type: "EXTENSION_GET_SESSION" }, (response) => {
+      if (chrome.runtime.lastError) return;
+      extensionUser = response?.success ? response.user : null;
+      if (panel) render();
+    });
   }
 
   function render() {
     if (!panel) return;
+
+    if (!extensionUser) {
+      panel.innerHTML = `
+        <div class="acc-head"><div class="acc-brand"><b>LinkedIn <span>CRM Pro</span></b><small>Secure Extension Login</small></div><button data-action="close" title="Close">✕</button></div>
+        <div class="acc-body acc-login">
+          <h3>Extension Login</h3>
+          <label for="acc-login-role">Role</label>
+          <select id="acc-login-role"><option value="Admin">Admin</option><option value="Sub Admin">Sub Admin</option></select>
+          <div id="acc-username-wrap" hidden><label for="acc-login-username">User name</label><input id="acc-login-username" type="text" autocomplete="username" placeholder="Enter user name"></div>
+          <label for="acc-login-pin">PIN</label>
+          <input id="acc-login-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" placeholder="Enter PIN">
+          <button class="acc-main acc-login-btn" data-action="extension-login">Login</button>
+          <div class="acc-message"></div>
+          <div class="acc-footer">Only Admin and Sub Admin can access this extension</div>
+        </div>`;
+      const roleInput = panel.querySelector("#acc-login-role");
+      const usernameWrap = panel.querySelector("#acc-username-wrap");
+      roleInput.onchange = () => { usernameWrap.hidden = roleInput.value !== "Sub Admin"; };
+      panel.onclick = async (event) => {
+        const button = event.target.closest("[data-action]");
+        if (!button) return;
+        if (button.dataset.action === "close") { closePanel(true); return; }
+        if (button.dataset.action !== "extension-login") return;
+        const role = roleInput.value;
+        const username = panel.querySelector("#acc-login-username")?.value.trim() || "";
+        const pin = panel.querySelector("#acc-login-pin").value.trim();
+        const message = panel.querySelector(".acc-message");
+        if (!pin || (role === "Sub Admin" && !username)) {
+          message.textContent = role === "Admin" ? "Enter your Admin PIN." : "Enter your user name and PIN.";
+          message.className = "acc-message error";
+          return;
+        }
+        button.disabled = true;
+        button.textContent = "Logging in...";
+        chrome.runtime.sendMessage({ type: "EXTENSION_LOGIN", credentials: { role, username, pin } }, (response) => {
+          if (chrome.runtime.lastError || !response?.success) {
+            message.textContent = response?.message || "Login failed. Please try again.";
+            message.className = "acc-message error";
+            button.disabled = false;
+            button.textContent = "Login";
+            return;
+          }
+          extensionUser = response.user;
+          render();
+        });
+      };
+      return;
+    }
 
     const p = getProfile();
     const photo = p.photoUrl || p.avatar;
@@ -1080,7 +1134,7 @@
           <b>LinkedIn <span>CRM Pro</span></b>
           <small>SignalHire Verified</small>
         </div>
-        <button data-action="close" title="Close">✕</button>
+        <div class="acc-head-actions"><span class="acc-user-role">${esc(extensionUser.role)}</span><button data-action="logout" title="Logout">Logout</button><button data-action="close" title="Close">✕</button></div>
       </div>
 
       <div class="acc-body">
@@ -1217,6 +1271,15 @@
 
       if (action === "close") {
         closePanel(true);
+        return;
+      }
+
+      if (action === "logout") {
+        button.disabled = true;
+        chrome.runtime.sendMessage({ type: "EXTENSION_LOGOUT" }, () => {
+          extensionUser = null;
+          render();
+        });
         return;
       }
 
