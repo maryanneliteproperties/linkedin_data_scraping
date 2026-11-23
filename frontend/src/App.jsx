@@ -27,6 +27,10 @@ export default function App() {
   const [assignedToId, setAssignedToId] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [leadTab, setLeadTab] = useState("admin");
+  const [leadAssignedToFilter, setLeadAssignedToFilter] = useState("all");
+  const [leadAssignedByFilter, setLeadAssignedByFilter] = useState("all");
+  const [leadDateFilter, setLeadDateFilter] = useState("");
+  const [leadTodayOnly, setLeadTodayOnly] = useState(false);
   const [taskAssignedToFilter, setTaskAssignedToFilter] = useState("all");
   const [taskDateFilter, setTaskDateFilter] = useState("");
   const [taskTodayOnly, setTaskTodayOnly] = useState(false);
@@ -137,7 +141,7 @@ export default function App() {
   }, [authUser]);
 
   useEffect(() => {
-    if (!authUser || !["Admin", "Sub Admin"].includes(authUser.role)) { setAssignableUsers([]); return; }
+    if (!authUser || !["Admin", "Sub Admin", "Employee"].includes(authUser.role)) { setAssignableUsers([]); return; }
     fetch(`${API}/assignable-users`, { credentials: "include" })
       .then((response) => response.ok ? response.json() : [])
       .then((users) => setAssignableUsers(Array.isArray(users) ? users : []))
@@ -165,7 +169,7 @@ export default function App() {
     const assignment = profile.assignment;
     if (authUser?.role === "Sub Admin") return leadTab === "admin" ? assignment?.assignedToId === authUser.id && assignment?.assignedByRole === "Admin" : profile.createdById === authUser.id;
     if (authUser?.role === "Employee") return assignment?.assignedToId === authUser.id && assignment?.assignedByRole === (leadTab === "admin" ? "Admin" : "Sub Admin");
-    return !assignment;
+    return true;
   }), [profiles, authUser, leadTab]);
 
   const filtered = useMemo(() => {
@@ -182,7 +186,29 @@ export default function App() {
       const title = String(profile.designation || profile.headline || "").toLowerCase();
       const hasContact = Boolean((profile.email && profile.email !== "Not Available") || (profile.phone && profile.phone !== "Not Available") || (profile.personalEmail && profile.personalEmail !== "Not Available"));
       const active = profile.status ? String(profile.status).toLowerCase() === "active" : true;
+      const assignment = profile.assignment || null;
+      const activityDate = assignment?.assignedAt || profile.createdAt || profile.updatedAt;
+      const activity = activityDate ? new Date(activityDate) : null;
+      const now = new Date();
+      const isToday = activity && !Number.isNaN(activity.getTime()) && activity.getFullYear() === now.getFullYear() && activity.getMonth() === now.getMonth() && activity.getDate() === now.getDate();
+      const activityDateValue = activity && !Number.isNaN(activity.getTime())
+        ? [activity.getFullYear(), String(activity.getMonth() + 1).padStart(2, "0"), String(activity.getDate()).padStart(2, "0")].join("-")
+        : "";
+      const assignedToMatches = authUser?.role === "Admin"
+        ? (leadAssignedToFilter === "all"
+          || (leadAssignedToFilter === "admin" && profile.createdByRole === "Admin" && !assignment)
+          || (leadAssignedToFilter !== "admin" && ((assignment?.assignedToId === leadAssignedToFilter) || (!assignment && profile.createdById === leadAssignedToFilter && profile.createdByRole === "Sub Admin"))))
+        : authUser?.role === "Sub Admin" && leadTab === "own"
+          ? (leadAssignedToFilter === "all" || (assignment?.assignedToId === leadAssignedToFilter && assignment?.assignedById === authUser.id))
+          : true;
+      const assignedByMatches = authUser?.role === "Employee" && leadTab === "own"
+        ? (leadAssignedByFilter === "all" || (assignment?.assignedById === leadAssignedByFilter && assignment?.assignedByRole === "Sub Admin"))
+        : true;
       return (!term || searchable.includes(term))
+        && assignedToMatches
+        && assignedByMatches
+        && (!leadDateFilter || activityDateValue === leadDateFilter)
+        && (!leadTodayOnly || Boolean(isToday))
         && (!filters.name || name.includes(filters.name.toLowerCase()))
         && (!filters.location || location.includes(filters.location.toLowerCase()))
         && (!filters.company || company.includes(filters.company.toLowerCase()))
@@ -191,7 +217,7 @@ export default function App() {
         && (filters.revealed === "all" || (filters.revealed === "yes" ? hasContact : !hasContact))
         && (filters.status === "all" || (filters.status === "active" ? active : !active));
     });
-  }, [tabProfiles, search, filters]);
+  }, [tabProfiles, search, filters, authUser, leadAssignedToFilter, leadAssignedByFilter, leadDateFilter, leadTodayOnly]);
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -200,6 +226,10 @@ export default function App() {
     startIndex,
     startIndex + itemsPerPage
   );
+
+  function canSelectProfile(profile) {
+    return canManageProfile(profile) && !(authUser?.role === "Admin" && profile?.assignment);
+  }
 
   const filteredAssignedTasks = useMemo(() => assignedTasks.filter((profile) => {
     const assignment = profile.assignment || {};
@@ -713,7 +743,7 @@ async function confirmDelete() {
 
       <div className="leadWorkspace">
         <aside className="filterPanel">
-          <div className="filterPanelHeading"><div><SlidersHorizontal size={16}/><strong>Filters</strong></div><button type="button" onClick={() => { setFilters({ name: "", location: "", company: "", title: "", industry: "", revealed: "all", status: "all" }); setSearch(""); setCurrentPage(1); }}>Clear all</button></div>
+          <div className="filterPanelHeading"><div><SlidersHorizontal size={16}/><strong>Filters</strong></div><button type="button" onClick={() => { setFilters({ name: "", location: "", company: "", title: "", industry: "", revealed: "all", status: "all" }); setSearch(""); setLeadAssignedToFilter("all"); setLeadAssignedByFilter("all"); setLeadDateFilter(""); setLeadTodayOnly(false); setCurrentPage(1); }}>Clear all</button></div>
           <div className="filterFields">
             <label><span>Contact name</span><input value={filters.name} onChange={e => setFilters(v => ({ ...v, name: e.target.value }))} placeholder="Contact name"/></label>
             <label><span>Contact location</span><input value={filters.location} onChange={e => setFilters(v => ({ ...v, location: e.target.value }))} placeholder="Contact location"/></label>
@@ -722,6 +752,11 @@ async function confirmDelete() {
             <label><span>Industry</span><input value={filters.industry} onChange={e => setFilters(v => ({ ...v, industry: e.target.value }))} placeholder="Industry"/></label>
           </div>
           <div className="filterFields filterSelects">
+            {authUser.role === "Admin" && <label><span>Assigned To</span><select value={leadAssignedToFilter} onChange={e => { setLeadAssignedToFilter(e.target.value); setCurrentPage(1); }}><option value="all">All</option><optgroup label="Admin"><option value="admin">Admin</option></optgroup><optgroup label="Sub Admins">{assignableUsers.filter(user => user.role === "Sub Admin").map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</optgroup><optgroup label="Employees">{assignableUsers.filter(user => user.role === "Employee").map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</optgroup></select></label>}
+            {authUser.role === "Sub Admin" && leadTab === "own" && <label><span>Assigned To</span><select value={leadAssignedToFilter} onChange={e => { setLeadAssignedToFilter(e.target.value); setCurrentPage(1); }}><option value="all">All Employees</option>{assignableUsers.filter(user => user.role === "Employee").map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>}
+            {authUser.role === "Employee" && leadTab === "own" && <label><span>Assigned By</span><select value={leadAssignedByFilter} onChange={e => { setLeadAssignedByFilter(e.target.value); setCurrentPage(1); }}><option value="all">All Sub Admins</option>{assignableUsers.filter(user => user.role === "Sub Admin").map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>}
+            <label><span>Date</span><input type="date" value={leadDateFilter} onChange={e => { setLeadDateFilter(e.target.value); setCurrentPage(1); }}/></label>
+            <label className="leadTodayFilter"><input type="checkbox" checked={leadTodayOnly} onChange={e => { setLeadTodayOnly(e.target.checked); setCurrentPage(1); }}/>Today</label>
             <label><span>By revealed contacts</span><select value={filters.revealed} onChange={e => setFilters(v => ({ ...v, revealed: e.target.value }))}><option value="all">All contacts</option><option value="yes">With contact details</option><option value="no">Without contact details</option></select></label>
             <label><span>By profile status</span><select value={filters.status} onChange={e => setFilters(v => ({ ...v, status: e.target.value }))}><option value="all">All profiles</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
           </div>
@@ -1064,7 +1099,7 @@ async function confirmDelete() {
 
 
         <div className="tableWrap"><table className="leadTable"><colgroup><col className="selectCol"/><col className="profileCol"/><col className="companyCol"/><col className="contactCol"/><col className="actionsCol"/></colgroup><thead><tr>
-      <th className="checkCell">{paginatedProfiles.some(canManageProfile) && <input type="checkbox" aria-label="Select all manageable profiles on this page" checked={paginatedProfiles.filter(canManageProfile).length > 0 && paginatedProfiles.filter(canManageProfile).every(p => selectedProfiles.includes(String(p.id)))} onChange={e => { const manageableIds = paginatedProfiles.filter(canManageProfile).map(p => String(p.id)); setSelectedProfiles(e.target.checked ? Array.from(new Set([...selectedProfiles, ...manageableIds])) : selectedProfiles.filter(id => !manageableIds.includes(id))); }} />}</th>
+      <th className="checkCell">{paginatedProfiles.some(canSelectProfile) && <input> type="checkbox" aria-label="Select all manageable profiles on this page" checked={paginatedProfiles.filter(canSelectProfile).length > 0 && paginatedProfiles.filter(canSelectProfile).every(p => selectedProfiles.includes(String(p.id)))} onChange={e => { const manageableIds = paginatedProfiles.filter(canSelectProfile).map(p => String(p.id)); setSelectedProfiles(e.target.checked ? Array.from(new Set([...selectedProfiles, ...manageableIds])) : selectedProfiles.filter(id => !manageableIds.includes(id))); }} />}</th>
       <th>PROFILE</th><th>COMPANY</th><th>CONTACT DETAILS</th><th className="actionHead">ACTION</th>
     </tr></thead>
     <tbody>{loading ? (
@@ -1074,10 +1109,10 @@ async function confirmDelete() {
     ) : (
       paginatedProfiles.map((profile) => (
         <tr key={profile.id}>
-          <td className="checkCell">{canManageProfile(profile) && <input type="checkbox" aria-label={`Select ${profile.name || "profile"}`} checked={selectedProfiles.includes(String(profile.id))} onChange={e => setSelectedProfiles(current => e.target.checked ? [...current, String(profile.id)] : current.filter(id => id !== String(profile.id)))}/>}</td>
+          <td className="checkCell">{canSelectProfile(profile) && <input type="checkbox" aria-label={`Select ${profile.name || "profile"}`} checked={selectedProfiles.includes(String(profile.id))} onChange={e => setSelectedProfiles(current => e.target.checked ? [...current, String(profile.id)] : current.filter(id => id !== String(profile.id)))}/>}</td>
           <td><div className="profileCell">
             {profile.photoUrl && profile.photoUrl !== "Not Available" ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="profileAvatarPlaceholder">{(profile.name || "?").charAt(0).toUpperCase()}</span>}
-            <div className="profileText"><button type="button" className="profileName" onClick={() => setViewingProfile(profile)}>{profile.name || "Not Available"}</button><span>{profile.designation || profile.headline || "Not Available"}</span>{profile.profileUrl && profile.profileUrl !== "Not Available" && <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="profileSocial"><Linkedin size={13}/></a>}</div>
+            <div className="profileText"><button type="button" className="profileName" onClick={() => setViewingProfile(profile)}>{profile.name || "Not Available"}</button><span>{profile.designation || profile.headline || "Not Available"}</span>{profile.profileUrl && profile.profileUrl !== "Not Available" && <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="profileSocial"><Linkedin size={13}/></a>}{authUser.role === "Admin" && profile.createdByRole === "Sub Admin" && profile.createdByName && <span className="profileCreatorBadge">{profile.createdByName}</span>}</div>
           </div></td>
           <td><div className="companyCell"><span className="companyMark">{(profile.company || "C").charAt(0).toUpperCase()}</span><div><strong>{profile.company || "Not Available"}</strong><span><MapPin size={12}/>{[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}</span></div></div></td>
           <td><div className="contactCell"><span><Mail size={14}/><span>{profile.email || "Not Available"}</span></span>{profile.personalEmail && profile.personalEmail !== profile.email && <span className="secondaryContact"><Mail size={14}/><span>{profile.personalEmail}</span></span>}<span><Phone size={14}/><span>{profile.phone || "Not Available"}</span></span></div></td>

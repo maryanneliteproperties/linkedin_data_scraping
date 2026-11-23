@@ -439,8 +439,8 @@ app.get(["/api/signalhire/credits", "/api/profiles/signalhire-credits"], auth.re
 
 app.get("/api/assignable-users", auth.requireAuth, async (req, res, next) => {
   try {
-    if (!["Admin", "Sub Admin"].includes(req.authUser.role)) return res.status(403).json({ message: "Only Admin and Sub Admin can assign profiles." });
-    const allowedRoles = req.authUser.role === "Admin" ? ["Sub Admin", "Employee"] : ["Employee"];
+    if (!["Admin", "Sub Admin", "Employee"].includes(req.authUser.role)) return res.status(403).json({ message: "Only authenticated team members can view the user filter list." });
+    const allowedRoles = req.authUser.role === "Admin" ? ["Sub Admin", "Employee"] : req.authUser.role === "Sub Admin" ? ["Employee"] : ["Sub Admin"];
     const { data, error } = await supabase.from("users").select("id,username,name,email,role").in("role", allowedRoles).order("name", { ascending: true });
     if (error) throw error;
     res.json(data || []);
@@ -506,8 +506,8 @@ app.get("/api/profiles", auth.requireAuth, async (req, res, next) => {
 
     let results = profiles.filter((profile) => {
       const assignment = profile.assignment;
-      if (req.authUser.role === "Admin") return !assignment;
-      if (req.authUser.role === "Sub Admin") return !assignment || assignment.assignedToId === req.authUser.id;
+      if (req.authUser.role === "Admin") return true;
+      if (req.authUser.role === "Sub Admin") return !assignment || assignment.assignedToId === req.authUser.id || assignment.assignedById === req.authUser.id;
       return assignment?.assignedToId === req.authUser.id;
     });
     if (query) {
