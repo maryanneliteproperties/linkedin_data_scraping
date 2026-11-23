@@ -1,6 +1,21 @@
 const API_BASE = "http://localhost:5000/api";
 const AUTH_STORAGE_KEY = "linkedin_crm_extension_auth";
 
+async function fetchWithNetworkRetry(url, options, retries = 3) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) break;
+      const delay = [700, 1400, 2200][attempt] || 2200;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError || new Error("Unable to connect to the backend.");
+}
+
 async function getStoredAuth() {
   const result = await chrome.storage.local.get(AUTH_STORAGE_KEY);
   return result[AUTH_STORAGE_KEY] || null;
@@ -45,7 +60,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         if (!["Admin", "Sub Admin"].includes(role)) {
           throw new Error("Only Admin and Sub Admin can use this extension.");
         }
-        const response = await fetch(`${API_BASE}/extension/auth/login`, {
+        const response = await fetchWithNetworkRetry(`${API_BASE}/extension/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
