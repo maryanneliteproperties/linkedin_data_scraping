@@ -156,13 +156,9 @@ export function normalizeCandidate(candidate, requestedUrl = "") {
   const honorAward = normalizeNamedArray(candidate.honorAward || candidate.honorAwards || candidate.honors);
   const organization = normalizeNamedArray(candidate.organization || candidate.organizations);
 
-  return {
-    uid: candidate.uid || "",
+    return {
     name,
     photoUrl,
-    gender,
-    experienceYears,
-    headLine,
     designation,
     company,
     location: loc.location,
@@ -176,19 +172,22 @@ export function normalizeCandidate(candidate, requestedUrl = "") {
     experiences,
     educations,
     skills,
-    language,
-    course,
-    project,
-    certification,
-    patent,
-    publication,
-    honorAward,
-    organization,
-    social: Array.isArray(candidate.social) ? candidate.social : [],
-    profileUrl: linkedinUrl,
+
+    // Additional SignalHire candidate fields
+    gender: candidate.gender || "Not Available",
+    experienceYears: candidate.experienceYears ?? "Not Available",
+    headLine: candidate.headLine?.trim() || "Not Available",
+    certification: Array.isArray(candidate.certification)
+      ? candidate.certification
+      : [],
+
+    // Preserve original API candidate data
     rawCandidate: candidate,
+
+    profileUrl: linkedinUrl,
     source: "SignalHire API"
   };
+
 }
 
 /**

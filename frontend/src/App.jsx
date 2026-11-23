@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save } from "lucide-react";
-
+import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save, Download, FileSpreadsheet, FileText, ChevronDown, List } from "lucide-react";
+import * as XLSX from "xlsx-js-style";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
-
 function formatListValue(item) {
   if (!item) return "";
   if (typeof item === "string") return item.trim();
@@ -18,7 +19,6 @@ function formatListValue(item) {
   }
   return String(item);
 }
-
 function renderPills(data, max = 2) {
   if (!data) return <span className="emptyCellText">Not Available</span>;
   const list = Array.isArray(data)
@@ -41,7 +41,36 @@ function renderPills(data, max = 2) {
     </div>
   );
 }
-
+function getProfileEmails(profile, type) {
+  const all = Array.isArray(profile.allEmails) ? profile.allEmails : [];
+  const wanted = type === "personal" ? ["personal", "private"] : ["work", "business", "professional"];
+  const matches = all.filter((item) => {
+    const subtype = String(item?.subType || item?.type || "").toLowerCase();
+    return wanted.some((word) => subtype.includes(word));
+  }).map((item) => item?.value || item?.email).filter(Boolean);
+  if (type === "business" && !all.length && profile.email) matches.unshift(profile.email);
+  if (type === "personal" && !all.length && profile.personalEmail) matches.unshift(profile.personalEmail);
+  if (type === "business" && all.length && !matches.length && profile.email && !all.some((item) => String(item?.subType || "").toLowerCase().includes("personal"))) matches.unshift(profile.email);
+  if (type === "personal" && profile.personalEmail) matches.unshift(profile.personalEmail);
+  return [...new Set(matches.map((value) => String(value).trim()).filter(Boolean))];
+}
+function EmailCell({ profile, type }) {
+  const emails = getProfileEmails(profile, type);
+  if (!emails.length) return <span className="emptyCellText">Not Available</span>;
+  return (
+    <div className="emailCell">
+      <a className="emailPrimary" href={`mailto:${emails[0]}`} title={emails[0]}>{emails[0]}</a>
+      {emails.length > 1 && (
+        <details className="emailMore">
+          <summary>+{emails.length - 1}</summary>
+          <div className="emailDropdown">
+            {emails.slice(1).map((email, index) => <a key={`${email}-${index}`} href={`mailto:${email}`}>{email}</a>)}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
 export default function App() {
   const [profiles, setProfiles] = useState([]);
   const [search, setSearch] = useState("");
@@ -62,9 +91,7 @@ export default function App() {
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-
-  
-
+  const [exportOpen, setExportOpen] = useState(false);
   async function loadProfiles(showLoader = true) {
     if (showLoader) setLoading(true);
     setError("");
@@ -77,7 +104,6 @@ export default function App() {
       setError("Backend connect aagala. Backend terminal-la npm run dev start pannunga.");
     } finally { setLoading(false); }
   }
-
   async function loadAuth() {
     setAuthLoading(true);
     try {
@@ -90,11 +116,9 @@ export default function App() {
       setAuthLoading(false);
     }
   }
-
   useEffect(() => {
     loadProfiles();
     loadAuth();
-
     // Refresh extension-saved profiles while the app is open,
     // and immediately when the user returns to this tab.
     const refreshProfiles = () => {
@@ -105,7 +129,6 @@ export default function App() {
     const refreshTimer = window.setInterval(refreshProfiles, 5000);
     window.addEventListener("focus", refreshProfiles);
     document.addEventListener("visibilitychange", refreshProfiles);
-
     const params = new URLSearchParams(window.location.search);
     const authStatus = params.get("linkedin_auth");
     if (authStatus === "success") setNotice("LinkedIn login successful. You can now save your own basic profile.");
@@ -115,52 +138,106 @@ export default function App() {
       const query = params.toString();
       window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
     }
-
     return () => {
       window.clearInterval(refreshTimer);
       window.removeEventListener("focus", refreshProfiles);
       document.removeEventListener("visibilitychange", refreshProfiles);
     };
   }, []);
-
   const filtered = useMemo(() => {
     const term = search.toLowerCase().trim();
     if (!term) return profiles;
     return profiles.filter((profile) => [
       profile.name, profile.email, profile.headline, profile.headLine, profile.company, profile.location,
-      profile.description, profile.phone, profile.gender, ...(profile.skills || []),
+      profile.description, profile.phone, profile.gender, ...(profile.allEmails || []).map((item) => item?.value || ""), ...(profile.skills || []),
       ...(profile.language || []), ...(profile.certification || []), ...(profile.project || [])
     ].join(" ").toLowerCase().includes(term));
   }, [profiles, search]);
-
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-
   const paginatedProfiles = filtered.slice(
     startIndex,
     startIndex + itemsPerPage
   );
-
   const firstItem = filtered.length === 0 ? 0 : startIndex + 1;
-
   const lastItem = Math.min(
     startIndex + itemsPerPage,
     filtered.length
   );
-
+  function getExportRows() {
+    return filtered.map((profile, index) => ({
+      "S.No": index + 1,
+      Name: profile.name || "Not Available",
+      Gender: profile.gender || "Not Available",
+      "Experience Years": profile.experienceYears ?? "Not Available",
+      Headline: profile.headLine || profile.headline || "Not Available",
+      Designation: profile.designation || profile.headline || "Not Available",
+      Company: profile.company || "Not Available",
+      Location: [profile.city, profile.country].filter(Boolean).join(", ") || profile.location || "Not Available",
+      "Business Email": getProfileEmails(profile, "business").join("; ") || "Not Available",
+      "Personal Email": getProfileEmails(profile, "personal").join("; ") || "Not Available",
+      Phone: profile.phone || "Not Available",
+      "LinkedIn URL": profile.profileUrl || "Not Available"
+    }));
+  }
+  function exportExcel() {
+    const rows = getExportRows();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet["!cols"] = [8, 24, 14, 16, 36, 25, 25, 25, 34, 34, 20, 42].map((wch) => ({ wch }));
+    const range = XLSX.utils.decode_range(worksheet["!ref"] || "A1:A1");
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cell = worksheet[XLSX.utils.encode_cell({ r: 0, c: col })];
+      if (cell) cell.s = { fill: { fgColor: { rgb: "155EEF" } }, font: { bold: true, color: { rgb: "FFFFFF" } }, alignment: { vertical: "center", wrapText: true } };
+    }
+    for (let row = 1; row <= range.e.r; row++) {
+      for (let col = range.s.c; col <= range.e.c; col++) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: row, c: col })];
+        if (cell) cell.s = { fill: { fgColor: { rgb: row % 2 ? "F4F8FF" : "FFFFFF" } }, font: { color: { rgb: "243247" } }, alignment: { vertical: "top", wrapText: true }, border: { bottom: { style: "thin", color: { rgb: "E4EAF2" } } } };
+      }
+    }
+    worksheet["!rows"] = [{ hpt: 26 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Lead List");
+    XLSX.writeFile(workbook, "LinkedIn_Lead_List.xlsx");
+    setExportOpen(false);
+  }
+  function exportPDF() {
+    const rows = getExportRows();
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a3" });
+    doc.setFillColor(21, 94, 239);
+    doc.rect(0, 0, doc.internal.pageSize.getWidth(), 66, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.text("LinkedIn Lead List", 36, 30);
+    doc.setFontSize(10);
+    doc.text(`Total profiles: ${rows.length}  |  Exported: ${new Date().toLocaleDateString()}`, 36, 49);
+    const columns = Object.keys(rows[0] || { "S.No": "", Name: "", "Business Email": "", "Personal Email": "" });
+    autoTable(doc, {
+      startY: 82,
+      head: [columns],
+      body: rows.map((row) => columns.map((column) => String(row[column] ?? ""))),
+      theme: "grid",
+      styles: { fontSize: 7, cellPadding: 5, overflow: "linebreak", textColor: [36, 50, 71], lineColor: [225, 232, 241] },
+      headStyles: { fillColor: [21, 94, 239], textColor: [255, 255, 255], fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [243, 247, 255] },
+      margin: { left: 28, right: 28 }
+    });
+    doc.save("LinkedIn_Lead_List.pdf");
+    setExportOpen(false);
+  }
   useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
-
     if (currentPage > maxPage) {
       setCurrentPage(maxPage);
     }
   }, [filtered.length, itemsPerPage, currentPage]);
-
   async function extractProfile(event) {
     event.preventDefault();
     setError(""); setNotice("");
     const url = profileUrl.trim();
-    if (!/^https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_%.-]+\/?(?:\?.*)?$/i.test(url)) {
+    let parsedProfileUrl;
+    try { parsedProfileUrl = new URL(url); } catch { parsedProfileUrl = null; }
+    if (!parsedProfileUrl || parsedProfileUrl.hostname.replace(/^www\./i, "") !== "linkedin.com" || !/^\/in\/[A-Za-z0-9_%.-]+\/?$/i.test(parsedProfileUrl.pathname)) {
       setError("Valid LinkedIn profile URL enter pannunga.");
       return;
     }
@@ -180,7 +257,6 @@ export default function App() {
       setError(err.message || "Unable to extract profile.");
     } finally { setExtracting(false); }
   }
-
   async function saveMyProfile() {
     setError(""); setNotice(""); setSavingMyProfile(true);
     try {
@@ -198,8 +274,6 @@ export default function App() {
       setError(err.message || "Unable to save your profile.");
     } finally { setSavingMyProfile(false); }
   }
-
-
 function startEdit(profile) {
   setEditingProfile(profile);
   setEditForm({
@@ -210,19 +284,15 @@ function startEdit(profile) {
     email: profile.email || "",
     phone: profile.phone || ""
   });
-
   setError("");
   setNotice("");
 }
-
 async function saveEdit(event) {
   event.preventDefault();
   if (!editingProfile) return;
-
   setSavingEdit(true);
   setError("");
   setNotice("");
-
   try {
     const response = await fetch(
       `${API}/profiles/${encodeURIComponent(editingProfile.id)}`,
@@ -232,21 +302,16 @@ async function saveEdit(event) {
         body: JSON.stringify(editForm)
       }
     );
-
     const result = await response.json();
-
     if (!response.ok) {
       throw new Error(result.message || "Profile update failed.");
     }
-
     const updated = result.profile;
-
     setProfiles(current =>
       current.map(item =>
         String(item.id) === String(updated.id) ? updated : item
       )
     );
-
     setEditingProfile(null);
     setNotice("Profile updated successfully.");
   } catch (err) {
@@ -255,36 +320,28 @@ async function saveEdit(event) {
     setSavingEdit(false);
   }
 }
-
 function deleteProfile(profile) {
   setDeletingProfile(profile);
 }
-
 async function confirmDelete() {
   if (!deletingProfile) return;
-
   setDeleting(true);
   setError("");
   setNotice("");
-
   try {
     const response = await fetch(
       `${API}/profiles/${encodeURIComponent(deletingProfile.id)}`,
       { method: "DELETE" }
     );
-
     const result = await response.json();
-
     if (!response.ok) {
       throw new Error(result.message || "Profile deletion failed.");
     }
-
     setProfiles(current =>
       current.filter(
         item => String(item.id) !== String(deletingProfile.id)
       )
     );
-
     setDeletingProfile(null);
     setNotice("Profile deleted successfully.");
   } catch (err) {
@@ -293,8 +350,6 @@ async function confirmDelete() {
     setDeleting(false);
   }
 }
-
-
   async function logout() {
     try {
       await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
@@ -303,8 +358,13 @@ async function confirmDelete() {
       setNotice("LinkedIn account signed out.");
     }
   }
-
   return (
+    <div className="appShell">
+      <aside className="appSidebar">
+        <div className="sidebarBrand"><span className="brandIcon"><Linkedin size={21} /></span><strong>ProfileDesk</strong></div>
+        <div className="sidebarSectionLabel">WORKSPACE</div>
+        <div className="sidebarNavItem active"><List size={17} /><span>Lead List</span></div>
+      </aside>
     <main className="page">
       <header className="topbar">
         <div className="brand"><span className="brandIcon"><Linkedin size={22} /></span><div><strong>ProfileDesk</strong><small>LinkedIn data viewer</small></div></div>
@@ -324,11 +384,9 @@ async function confirmDelete() {
           <span className="apiStatus"><i /> Backend API</span>
         </div> */}
       </header>
-
       <section className="hero">
         <div><p className="eyebrow">LINKEDIN PROFILE EXTRACTION</p><h1>LinkedIn Profiles</h1><p className="subtext">Sign in to save your own LinkedIn basic profile, or view records already stored in this app.</p></div>
       </section>
-
       {/* <form className="extractPanel" onSubmit={extractProfile}>
         <div className="extractHeading"><div><h2>Extract LinkedIn Profile</h2><p>Other members' profile extraction requires separate LinkedIn-approved API access.</p></div><span className="extractIcon"><DownloadCloud size={20}/></span></div>
         <div className="extractControls">
@@ -336,18 +394,14 @@ async function confirmDelete() {
           <button className="primaryBtn" type="submit" disabled={extracting || !profileUrl.trim()}>{extracting ? "Checking..." : "Extract Profile"}</button>
         </div>
       </form> */}
-
       {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
       {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
-
       <section className="stats">
         <div className="statCard"><span className="statIcon"><Users size={19} /></span><div><small>Total profiles</small><strong>{profiles.length}</strong></div></div>
         <div className="statCard"><span className="statIcon blue"><Linkedin size={19} /></span><div><small>Showing results</small><strong>{filtered.length}</strong></div></div>
       </section>
-
       <section className="tablePanel">
-        <div className="tableToolbar"><div><h2>Profile records</h2><p>LinkedIn member data saved in the application</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
-
+        <div className="tableToolbar"><div><h2>Profile records</h2><p>LinkedIn member data saved in the application</p></div><div className="toolbarActions"><div className="exportWrapper"><button className="exportBtn" type="button" onClick={() => setExportOpen((open) => !open)}><Download size={15}/> Export <ChevronDown size={14}/></button>{exportOpen && <div className="exportDropdown"><button type="button" onClick={exportExcel}><FileSpreadsheet size={16}/> Export Excel</button><button type="button" onClick={exportPDF}><FileText size={16}/> Export PDF</button></div>}</div><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
 {viewingProfile && (
   <div className="modalBackdrop" onClick={() => setViewingProfile(null)}>
     <div
@@ -399,7 +453,6 @@ async function confirmDelete() {
             </div>
           </div>
         </div>
-
         <button
           className="closeBtn"
           type="button"
@@ -409,7 +462,6 @@ async function confirmDelete() {
           ×
         </button>
       </div>
-
       <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
         {/* Contact Information */}
         <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
@@ -431,7 +483,6 @@ async function confirmDelete() {
             </div>
           </div>
         </div>
-
         {/* Work Experience */}
         <div>
           <h3 style={{ fontSize: "13px", margin: "0 0 10px", color: "#0f172a", textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -458,7 +509,6 @@ async function confirmDelete() {
             <div style={{ color: "#64748b", fontSize: "13px", fontStyle: "italic" }}>Not Available</div>
           )}
         </div>
-
         {/* Education Details */}
         <div>
           <h3 style={{ fontSize: "13px", margin: "0 0 10px", color: "#0f172a", textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -484,7 +534,6 @@ async function confirmDelete() {
             <div style={{ color: "#64748b", fontSize: "13px", fontStyle: "italic" }}>Not Available</div>
           )}
         </div>
-
         {/* Skills */}
         <div>
           <h3 style={{ fontSize: "13px", margin: "0 0 10px", color: "#0f172a", textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -513,7 +562,6 @@ async function confirmDelete() {
             <div style={{ color: "#64748b", fontSize: "13px", fontStyle: "italic" }}>Not Available</div>
           )}
         </div>
-
         {/* Footer / Social Link */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "14px", borderTop: "1px solid #e2e8f0" }}>
           {viewingProfile.profileUrl && viewingProfile.profileUrl !== "Not Available" ? (
@@ -536,7 +584,6 @@ async function confirmDelete() {
           ) : (
             <span style={{ fontSize: "12px", color: "#64748b" }}>LinkedIn: Not Available</span>
           )}
-
           <button
             type="button"
             className="editBtn"
@@ -553,7 +600,6 @@ async function confirmDelete() {
     </div>
   </div>
 )}
-
 {editingProfile && (
   <div className="modalBackdrop" onClick={() => setEditingProfile(null)}>
     <form
@@ -567,7 +613,6 @@ async function confirmDelete() {
           <h2>Edit Profile</h2>
           <p>Update LinkedIn profile details.</p>
         </div>
-
         <button
           className="closeBtn"
           type="button"
@@ -576,7 +621,6 @@ async function confirmDelete() {
           ×
         </button>
       </div>
-
       <div className="formGrid editFormGrid">
         {[
           ["name", "Name"],
@@ -600,7 +644,6 @@ async function confirmDelete() {
           </label>
         ))}
       </div>
-
       <div className="formActions">
         <button
           className="secondaryBtn"
@@ -609,7 +652,6 @@ async function confirmDelete() {
         >
           Cancel
         </button>
-
         <button className="primaryBtn" type="submit" disabled={savingEdit}>
           {savingEdit ? "Saving..." : "Save Changes"}
         </button>
@@ -617,8 +659,6 @@ async function confirmDelete() {
     </form>
   </div>
 )}
-
-
 {deletingProfile && (
   <div
     className="modalBackdrop"
@@ -645,18 +685,14 @@ async function confirmDelete() {
           <path d="M10 11v5M14 11v5" />
         </svg>
       </div>
-
       <h2>Delete Profile?</h2>
-
       <p>
         Are you sure you want to delete
         <strong> {deletingProfile.name}</strong>?
       </p>
-
       <p className="deleteWarning">
         This action cannot be undone. The profile will be permanently removed.
       </p>
-
       <div className="deleteModalActions">
         <button
           type="button"
@@ -666,7 +702,6 @@ async function confirmDelete() {
         >
           Cancel
         </button>
-
         <button
           type="button"
           className="confirmDeleteBtn"
@@ -679,8 +714,6 @@ async function confirmDelete() {
     </div>
   </div>
 )}
-
-
         <div className="tableWrap"><table><thead><tr>
       <th style={{ width: "65px", minWidth: "65px" }}>PHOTO</th>
       <th style={{ width: "160px", minWidth: "160px" }}>NAME</th>
@@ -690,7 +723,8 @@ async function confirmDelete() {
       <th style={{ width: "180px", minWidth: "180px" }}>DESIGNATION</th>
       <th style={{ width: "150px", minWidth: "150px" }}>COMPANY</th>
       <th style={{ width: "160px", minWidth: "160px" }}>LOCATION</th>
-      <th style={{ width: "210px", minWidth: "210px" }}>EMAIL</th>
+      <th style={{ width: "250px", minWidth: "250px" }}>BUSINESS EMAIL</th>
+      <th style={{ width: "250px", minWidth: "250px" }}>PERSONAL EMAIL</th>
       <th style={{ width: "140px", minWidth: "140px" }}>PHONE</th>
       <th style={{ width: "260px", minWidth: "260px" }}>EXPERIENCE</th>
       <th style={{ width: "260px", minWidth: "260px" }}>EDUCATION</th>
@@ -707,9 +741,9 @@ async function confirmDelete() {
       <th style={{ width: "170px", minWidth: "170px" }}>ACTION</th>
     </tr></thead>
     <tbody>{loading ? (
-      <tr><td colSpan="23" className="empty">Loading profiles...</td></tr>
+      <tr><td colSpan="24" className="empty">Loading profiles...</td></tr>
     ) : filtered.length === 0 ? (
-      <tr><td colSpan="23" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
+      <tr><td colSpan="24" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
     ) : (
       paginatedProfiles.map((profile) => (
         <tr key={profile.id}>
@@ -721,14 +755,12 @@ async function confirmDelete() {
               <span className="notAvailablePhoto">Not Available</span>
             )}
           </td>
-
           {/* 2. NAME */}
           <td>
             <div className="tableNameWrap">
               <strong className="profileNameText">{profile.name || "Not Available"}</strong>
             </div>
           </td>
-
           {/* 3. GENDER */}
           <td>
             {profile.gender && profile.gender !== "Not Available" ? (
@@ -737,7 +769,6 @@ async function confirmDelete() {
               <span className="emptyCellText">Not Available</span>
             )}
           </td>
-
           {/* 4. EXP YEARS */}
           <td>
             {profile.experienceYears !== null && profile.experienceYears !== undefined && profile.experienceYears !== "" && profile.experienceYears !== "Not Available" ? (
@@ -746,7 +777,6 @@ async function confirmDelete() {
               <span className="emptyCellText">Not Available</span>
             )}
           </td>
-
           {/* 5. HEADLINE */}
           <td>
             {profile.headLine && profile.headLine !== "Not Available" ? (
@@ -755,14 +785,12 @@ async function confirmDelete() {
               <span className="emptyCellText">Not Available</span>
             )}
           </td>
-
           {/* 6. DESIGNATION */}
           <td>
             <div className="tableDesignationText">
               {profile.designation || profile.headline || "Not Available"}
             </div>
           </td>
-
           {/* 7. COMPANY */}
           <td>
             <div className="tableCompanyWrap">
@@ -772,31 +800,20 @@ async function confirmDelete() {
               ) : null}
             </div>
           </td>
-
           {/* 8. LOCATION */}
           <td>
             <div className="tableLocationText">
               {[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}
             </div>
           </td>
-
-          {/* 9. EMAIL */}
-          <td>
-            <div className="tableContactCol">
-              <div className="tableEmailPrimary">{profile.email || "Not Available"}</div>
-              {profile.personalEmail && profile.personalEmail !== profile.email ? (
-                <div className="tableEmailSecondary">
-                  Personal: {profile.personalEmail}
-                </div>
-              ) : null}
-            </div>
-          </td>
-
+          {/* 9. BUSINESS EMAIL */}
+          <td><EmailCell profile={profile} type="business" /></td>
+          {/* 10. PERSONAL EMAIL */}
+          <td><EmailCell profile={profile} type="personal" /></td>
           {/* 10. PHONE */}
           <td>
             <div className="tablePhonePrimary">{profile.phone || "Not Available"}</div>
           </td>
-
           {/* 11. EXPERIENCE */}
           <td>
             {profile.experiences && profile.experiences.length > 0 ? (
@@ -818,7 +835,6 @@ async function confirmDelete() {
               <span className="emptyCellText">Not Available</span>
             )}
           </td>
-
           {/* 12. EDUCATION */}
           <td>
             {profile.educations && profile.educations.length > 0 ? (
@@ -842,7 +858,6 @@ async function confirmDelete() {
               <span className="emptyCellText">Not Available</span>
             )}
           </td>
-
           {/* 13. SKILLS */}
           <td>
             {profile.skills && profile.skills.length > 0 ? (
@@ -867,31 +882,22 @@ async function confirmDelete() {
               <span className="emptyCellText">Not Available</span>
             )}
           </td>
-
           {/* 14. LANGUAGE */}
           <td>{renderPills(profile.language || profile.languages, 3)}</td>
-
           {/* 15. COURSE */}
           <td>{renderPills(profile.course || profile.courses, 3)}</td>
-
           {/* 16. PROJECT */}
           <td>{renderPills(profile.project || profile.projects, 2)}</td>
-
           {/* 17. CERTIFICATION */}
           <td>{renderPills(profile.certification || profile.certifications, 2)}</td>
-
           {/* 18. PATENT */}
           <td>{renderPills(profile.patent || profile.patents, 2)}</td>
-
           {/* 19. PUBLICATION */}
           <td>{renderPills(profile.publication || profile.publications, 2)}</td>
-
           {/* 20. HONOR AWARD */}
           <td>{renderPills(profile.honorAward || profile.honorAwards || profile.honors, 2)}</td>
-
           {/* 21. ORGANIZATION */}
           <td>{renderPills(profile.organization || profile.organizations, 2)}</td>
-
           {/* 22. LINKEDIN URL */}
           <td>
             {profile.profileUrl && profile.profileUrl !== "Not Available" ? (
@@ -909,7 +915,6 @@ async function confirmDelete() {
               <span className="emptyCellText">Not Available</span>
             )}
           </td>
-
           {/* 23. ACTION */}
           <td>
             <div className="actionButtons">
@@ -945,11 +950,9 @@ async function confirmDelete() {
             Showing <strong>{firstItem}-{lastItem}</strong> of{" "}
             <strong>{filtered.length}</strong> profiles
           </div>
-
           <div className="paginationControls">
             <div className="itemsPerPage">
               <span>Rows per page</span>
-
               <select
                 value={itemsPerPage}
                 onChange={(e) => {
@@ -963,7 +966,6 @@ async function confirmDelete() {
                 <option value={100}>100</option>
               </select>
             </div>
-
             <button
               className="pageBtn"
               disabled={currentPage <= 1}
@@ -971,11 +973,9 @@ async function confirmDelete() {
             >
               Previous
             </button>
-
             <span className="currentPage">
               {currentPage} / {Math.max(totalPages, 1)}
             </span>
-
             <button
               className="pageBtn"
               disabled={currentPage >= totalPages}
@@ -987,8 +987,8 @@ async function confirmDelete() {
         </div>
         <div className="tableFooter">Showing {filtered.length} of {profiles.length} profiles <span>Profile details received from LinkedIn Contact Finder</span></div>
       </section>
-      <footer>ProfileDesk <span>•</span> React + Express</footer>
-
+      {/* <footer>ProfileDesk <span>•</span> React + Express</footer> */}
     </main>
+    </div>
   );
 }
