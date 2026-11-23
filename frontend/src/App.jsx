@@ -15,6 +15,14 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [loginRole, setLoginRole] = useState("Admin");
+  const [loginPin, setLoginPin] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [newAccount, setNewAccount] = useState({ name: "", email: "", pin: "", role: "Employee" });
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountMessage, setAccountMessage] = useState("");
   const [savingMyProfile, setSavingMyProfile] = useState(false);
   const [editingProfile, setEditingProfile] = useState(null);
   const [viewingProfile, setViewingProfile] = useState(null);
@@ -35,7 +43,7 @@ export default function App() {
     if (showLoader) setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API}/profiles`);
+      const response = await fetch(`${API}/profiles`, { credentials: "include" });
       if (!response.ok) throw new Error("Could not load profiles.");
       const data = await response.json();
       setProfiles(Array.isArray(data) ? data : []);
@@ -58,19 +66,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    loadProfiles();
     loadAuth();
-
-    // Refresh extension-saved profiles while the app is open,
-    // and immediately when the user returns to this tab.
-    const refreshProfiles = () => {
-      if (document.visibilityState === "visible") {
-        loadProfiles(false);
-      }
-    };
-    const refreshTimer = window.setInterval(refreshProfiles, 5000);
-    window.addEventListener("focus", refreshProfiles);
-    document.addEventListener("visibilitychange", refreshProfiles);
 
     const params = new URLSearchParams(window.location.search);
     const authStatus = params.get("linkedin_auth");
@@ -82,12 +78,31 @@ export default function App() {
       window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
     }
 
+  }, []);
+
+  useEffect(() => {
+    if (!authUser) return;
+    loadProfiles();
+    const refreshProfiles = () => {
+      if (document.visibilityState === "visible") loadProfiles(false);
+    };
+    const refreshTimer = window.setInterval(refreshProfiles, 5000);
+    window.addEventListener("focus", refreshProfiles);
+    document.addEventListener("visibilitychange", refreshProfiles);
     return () => {
       window.clearInterval(refreshTimer);
       window.removeEventListener("focus", refreshProfiles);
       document.removeEventListener("visibilitychange", refreshProfiles);
     };
-  }, []);
+  }, [authUser]);
+
+  useEffect(() => {
+    if (authUser?.role !== "Admin") return;
+    fetch(`${API}/admin/users`, { credentials: "include" })
+      .then((response) => response.ok ? response.json() : [])
+      .then((users) => setAdminUsers(Array.isArray(users) ? users : []))
+      .catch(() => setAdminUsers([]));
+  }, [authUser]);
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase().trim();
@@ -160,6 +175,47 @@ export default function App() {
     } catch (err) {
       setError(err.message || "Unable to extract profile.");
     } finally { setExtracting(false); }
+  }
+
+  async function submitPinLogin(event) {
+    event.preventDefault();
+    setLoginBusy(true);
+    setLoginError("");
+    try {
+      const response = await fetch(API + "/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ role: loginRole, pin: loginPin })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Login failed.");
+      setAuthUser(result.user);
+      setLoginPin("");
+    } catch (err) {
+      setLoginError(err.message || "Unable to log in.");
+    } finally { setLoginBusy(false); }
+  }
+
+  async function createUserAccount(event) {
+    event.preventDefault();
+    setAccountBusy(true);
+    setAccountMessage("");
+    try {
+      const response = await fetch(API + "/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(newAccount)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Account creation failed.");
+      setAdminUsers((current) => [...current, result.user]);
+      setNewAccount({ name: "", email: "", pin: "", role: "Employee" });
+      setAccountMessage("Account created successfully.");
+    } catch (err) {
+      setAccountMessage(err.message || "Unable to create account.");
+    } finally { setAccountBusy(false); }
   }
 
   async function saveMyProfile() {
@@ -420,8 +476,30 @@ async function confirmDelete() {
       await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
     } finally {
       setAuthUser(null);
-      setNotice("LinkedIn account signed out.");
+      setProfiles([]);
+      setNotice("");
+      setLoginError("");
     }
+  }
+
+  if (authLoading) {
+    return <main className="authScreen"><div className="authCard"><div className="brandIcon"><Linkedin size={22}/></div><h1>ProfileDesk</h1><p>Checking your session...</p></div></main>;
+  }
+  if (!authUser) {
+    return (
+      <main className="authScreen">
+        <form className="authCard" onSubmit={submitPinLogin}>
+          <div className="brandIcon"><Linkedin size={22}/></div>
+          <h1>ProfileDesk</h1><p>Sign in to access the Lead List</p>
+          <label>Role<select value={loginRole} onChange={(event) => setLoginRole(event.target.value)}>
+            <option value="Admin">Admin</option><option value="Sub Admin">Sub Admin</option><option value="Employee">Employees</option>
+          </select></label>
+          <label>PIN<input type="password" inputMode="numeric" autoComplete="current-password" maxLength={8} value={loginPin} onChange={(event) => setLoginPin(event.target.value.replace(/[^0-9]/g, ""))} placeholder="Enter your PIN" required/></label>
+          {loginError && <div className="errorBox">{loginError}</div>}
+          <button className="primaryBtn" type="submit" disabled={loginBusy || loginPin.length < 4}>{loginBusy ? "Signing in..." : "Login"}</button>
+        </form>
+      </main>
+    );
   }
 
   return (
@@ -459,6 +537,24 @@ async function confirmDelete() {
       <section className="hero">
         <div><p className="eyebrow">LINKEDIN CONTACTS</p><h1>Lead List</h1><p className="subtext">Manage saved LinkedIn profiles and contact details.</p></div>
       </section>
+      <div className="sessionBar">
+        <span>{authUser.name} · {authUser.role}</span>
+        <button type="button" className="secondaryBtn" onClick={logout}><LogOut size={15}/> Logout</button>
+      </div>
+      {authUser.role === "Admin" && (
+        <section className="accountAdminPanel">
+          <div className="accountPanelHeading"><div><h2>User Accounts</h2><p>Create Sub Admin and Employee logins</p></div></div>
+          <form className="accountCreateForm" onSubmit={createUserAccount}>
+            <label>Name<input value={newAccount.name} onChange={(e) => setNewAccount(v => ({ ...v, name: e.target.value }))} required placeholder="Full name"/></label>
+            <label>Email<input type="email" value={newAccount.email} onChange={(e) => setNewAccount(v => ({ ...v, email: e.target.value }))} required placeholder="Email address"/></label>
+            <label>PIN<input type="password" inputMode="numeric" maxLength={8} value={newAccount.pin} onChange={(e) => setNewAccount(v => ({ ...v, pin: e.target.value.replace(/[^0-9]/g, "") }))} required placeholder="4-8 digit PIN"/></label>
+            <label>Role<select value={newAccount.role} onChange={(e) => setNewAccount(v => ({ ...v, role: e.target.value }))}><option value="Employee">Employee</option><option value="Sub Admin">Sub Admin</option></select></label>
+            <button className="primaryBtn" type="submit" disabled={accountBusy || newAccount.pin.length < 4}>{accountBusy ? "Creating..." : "Create Account"}</button>
+          </form>
+          {accountMessage && <p className="accountMessage">{accountMessage}</p>}
+          <div className="accountList">{adminUsers.map((user) => <div className="accountListRow" key={user.id}><span><strong>{user.name}</strong><small>{user.email}</small></span><span>{user.role}</span></div>)}</div>
+        </section>
+      )}
 
       {/* <form className="extractPanel" onSubmit={extractProfile}>
         <div className="extractHeading"><div><h2>Extract LinkedIn Profile</h2><p>Other members' profile extraction requires separate LinkedIn-approved API access.</p></div><span className="extractIcon"><DownloadCloud size={20}/></span></div>
