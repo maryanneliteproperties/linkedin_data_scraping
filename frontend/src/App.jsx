@@ -209,7 +209,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username: loginUsername.trim(), role: loginRole, pin: loginPin })
+        body: JSON.stringify({ ...(loginRole !== "Admin" ? { username: loginUsername.trim() } : {}), role: loginRole, pin: loginPin })
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "Login failed.");
@@ -554,13 +554,13 @@ async function confirmDelete() {
         <form className="authCard" onSubmit={submitPinLogin}>
           <div className="brandIcon"><Linkedin size={22}/></div>
           <h1>ProfileDesk</h1><p>Sign in to access the Lead List</p>
-          <label>User Name<input type="text" autoComplete="username" value={loginUsername} onChange={(event) => setLoginUsername(event.target.value)} placeholder="Enter your user name" required/></label>
-          <label>Role<select value={loginRole} onChange={(event) => setLoginRole(event.target.value)}>
-            <option value="Admin">Admin</option><option value="Sub Admin">Sub Admin</option><option value="Employee">Employees</option>
+          <label>Role<select value={loginRole} onChange={(event) => { setLoginRole(event.target.value); setLoginUsername(""); }}>
+            <option value="Admin">Admin</option><option value="Sub Admin">Sub Admin</option><option value="Employee">Employee</option>
           </select></label>
+          {loginRole !== "Admin" && <label>User Name<input type="text" autoComplete="username" value={loginUsername} onChange={(event) => setLoginUsername(event.target.value)} placeholder="Enter your user name" required/></label>}
           <label>PIN<input type="password" inputMode="numeric" autoComplete="current-password" maxLength={8} value={loginPin} onChange={(event) => setLoginPin(event.target.value.replace(/[^0-9]/g, ""))} placeholder="Enter your PIN" required/></label>
           {loginError && <div className="errorBox">{loginError}</div>}
-          <button className="primaryBtn" type="submit" disabled={loginBusy || !loginUsername.trim() || loginPin.length < 4}>{loginBusy ? "Signing in..." : "Login"}</button>
+          <button className="primaryBtn" type="submit" disabled={loginBusy || (loginRole !== "Admin" && !loginUsername.trim()) || loginPin.length < 4}>{loginBusy ? "Signing in..." : "Login"}</button>
         </form>
       </main>
     );
