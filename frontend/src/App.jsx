@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save } from "lucide-react";
+import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save, Home, ContactRound, BriefcaseBusiness, Settings, MapPin, Mail, Phone, SlidersHorizontal, ChevronDown, MoreHorizontal, FileSpreadsheet, FileText } from "lucide-react";
 
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
@@ -62,6 +62,10 @@ export default function App() {
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [filters, setFilters] = useState({ name: "", location: "", company: "", title: "", industry: "", revealed: "all", status: "all" });
+  const [selectedProfiles, setSelectedProfiles] = useState([]);
+  const [exportMenuFor, setExportMenuFor] = useState(null);
+  const [exportingFormat, setExportingFormat] = useState("");
 
   
 
@@ -125,13 +129,28 @@ export default function App() {
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase().trim();
-    if (!term) return profiles;
-    return profiles.filter((profile) => [
-      profile.name, profile.email, profile.headline, profile.headLine, profile.company, profile.location,
-      profile.description, profile.phone, profile.gender, ...(profile.skills || []),
-      ...(profile.language || []), ...(profile.certification || []), ...(profile.project || [])
-    ].join(" ").toLowerCase().includes(term));
-  }, [profiles, search]);
+    return profiles.filter((profile) => {
+      const searchable = [
+        profile.name, profile.email, profile.personalEmail, profile.headline,
+        profile.designation, profile.company, profile.location, profile.city,
+        profile.country, profile.description, profile.phone, ...(profile.skills || [])
+      ].join(" ").toLowerCase();
+      const name = String(profile.name || "").toLowerCase();
+      const location = [profile.city, profile.country, profile.location].join(" ").toLowerCase();
+      const company = String(profile.company || "").toLowerCase();
+      const title = String(profile.designation || profile.headline || "").toLowerCase();
+      const hasContact = Boolean((profile.email && profile.email !== "Not Available") || (profile.phone && profile.phone !== "Not Available") || (profile.personalEmail && profile.personalEmail !== "Not Available"));
+      const active = profile.status ? String(profile.status).toLowerCase() === "active" : true;
+      return (!term || searchable.includes(term))
+        && (!filters.name || name.includes(filters.name.toLowerCase()))
+        && (!filters.location || location.includes(filters.location.toLowerCase()))
+        && (!filters.company || company.includes(filters.company.toLowerCase()))
+        && (!filters.title || title.includes(filters.title.toLowerCase()))
+        && (!filters.industry || String(profile.industry || "").toLowerCase().includes(filters.industry.toLowerCase()))
+        && (filters.revealed === "all" || (filters.revealed === "yes" ? hasContact : !hasContact))
+        && (filters.status === "all" || (filters.status === "active" ? active : !active));
+    });
+  }, [profiles, search, filters]);
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -295,6 +314,145 @@ async function confirmDelete() {
 }
 
 
+  function getExportProfiles(profile = null) {
+    if (profile) return [profile];
+    if (selectedProfiles.length) {
+      return filtered.filter(item => selectedProfiles.includes(String(item.id)));
+    }
+    return filtered;
+  }
+
+  function exportRows(sourceProfiles) {
+    return sourceProfiles.map(profile => ({
+      "Name": profile.name || "Not Available",
+      "Designation": profile.designation || profile.headline || "Not Available",
+      "Company": profile.company || "Not Available",
+      "Location": [profile.city, profile.country].filter(value => value && value !== "Not Available").join(", ") || profile.location || "Not Available",
+      "Business Email": profile.email || "Not Available",
+      "Personal Email": profile.personalEmail || "Not Available",
+      "Phone": profile.phone || "Not Available"
+    }));
+  }
+
+  async function exportProfiles(format, profile = null) {
+    const sourceProfiles = getExportProfiles(profile);
+    if (!sourceProfiles.length) {
+      setNotice("Export panna profiles available illa.");
+      setExportMenuFor(null);
+      return;
+    }
+
+    setExportingFormat(format);
+    setError("");
+    setNotice("");
+    try {
+      const rows = exportRows(sourceProfiles);
+      const dateStamp = new Date().toISOString().slice(0, 10);
+
+      if (format === "excel") {
+        const ExcelJS = (await import("exceljs")).default;
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = "LinkedIn Lead List";
+        workbook.created = new Date();
+        workbook.subject = "LinkedIn profile contact list";
+        workbook.title = "LinkedIn Lead List";
+        const sheet = workbook.addWorksheet("Lead List", {
+          views: [{ state: "frozen", ySplit: 4 }],
+          properties: { defaultRowHeight: 22 }
+        });
+
+        sheet.mergeCells("A1:G1");
+        sheet.getCell("A1").value = "LINKEDIN LEAD LIST";
+        sheet.getCell("A1").font = { name: "Aptos Display", size: 18, bold: true, color: { argb: "FFFFFFFF" } };
+        sheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1769AA" } };
+        sheet.getCell("A1").alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+        sheet.getRow(1).height = 38;
+
+        sheet.mergeCells("A2:G2");
+        sheet.getCell("A2").value = `Exported on ${new Date().toLocaleString()}  •  ${rows.length} profile(s)`;
+        sheet.getCell("A2").font = { name: "Aptos", size: 10, italic: true, color: { argb: "FF526579" } };
+        sheet.getCell("A2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF3FB" } };
+        sheet.getCell("A2").alignment = { vertical: "middle", indent: 1 };
+        sheet.getRow(2).height = 25;
+        sheet.addRow([]);
+
+        const headers = Object.keys(rows[0]);
+        const headerRow = sheet.addRow(headers);
+        headerRow.height = 30;
+        headerRow.eachCell(cell => {
+          cell.font = { name: "Aptos", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF245B86" } };
+          cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+          cell.border = { bottom: { style: "medium", color: { argb: "FF42B7C5" } } };
+        });
+
+        rows.forEach((record, index) => {
+          const row = sheet.addRow(headers.map(header => record[header]));
+          row.height = 28;
+          row.eachCell(cell => {
+            cell.font = { name: "Aptos", size: 10, color: { argb: "FF26364A" } };
+            cell.alignment = { vertical: "middle", wrapText: true };
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: index % 2 === 0 ? "FFF3F8FC" : "FFFFFFFF" } };
+            cell.border = { bottom: { style: "hair", color: { argb: "FFDCE6EF" } } };
+          });
+        });
+        [25, 32, 25, 27, 34, 34, 20].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+        sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4 + rows.length, column: 7 } };
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `linkedin-lead-list-${dateStamp}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } else {
+        const { jsPDF } = await import("jspdf");
+        const autoTableModule = await import("jspdf-autotable");
+        const autoTable = autoTableModule.default;
+        const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+        doc.setFillColor(23, 105, 170);
+        doc.rect(0, 0, 297, 29, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(18);
+        doc.text("LINKEDIN LEAD LIST", 14, 13);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text(`Exported on ${new Date().toLocaleString()}  |  ${rows.length} profile(s)`, 14, 21);
+        autoTable(doc, {
+          startY: 35,
+          head: [Object.keys(rows[0])],
+          body: rows.map(row => Object.values(row)),
+          theme: "grid",
+          margin: { left: 12, right: 12, bottom: 18 },
+          styles: { font: "helvetica", fontSize: 7.5, cellPadding: 3, textColor: [38, 54, 74], lineColor: [220, 230, 239], lineWidth: 0.15, overflow: "linebreak" },
+          headStyles: { fillColor: [36, 91, 134], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+          alternateRowStyles: { fillColor: [241, 247, 252] },
+          didDrawPage: () => {
+            const pageCount = doc.internal.getNumberOfPages();
+            doc.setFontSize(8);
+            doc.setTextColor(120, 132, 146);
+            doc.text("Confidential • LinkedIn Lead List", 12, 202);
+            doc.text(`Page ${doc.internal.getCurrentPageInfo().pageNumber} of ${pageCount}`, 285, 202, { align: "right" });
+          }
+        });
+        doc.save(`linkedin-lead-list-${dateStamp}.pdf`);
+      }
+
+      setNotice(`${format === "excel" ? "Excel" : "PDF"} export downloaded successfully (${rows.length} profile(s)).`);
+      setExportMenuFor(null);
+    } catch (err) {
+      console.error("Export failed:", err);
+      setError("Export failed. Please try again.");
+    } finally {
+      setExportingFormat("");
+    }
+  }
+
+
   async function logout() {
     try {
       await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
@@ -306,6 +464,17 @@ async function confirmDelete() {
 
   return (
     <main className="page">
+      <aside className="appSidebar">
+        <div className="sidebarBrand">PD</div>
+        <nav aria-label="Main navigation">
+          <button type="button" className="sidebarNavItem" title="Home"><Home size={20}/></button>
+          <button type="button" className="sidebarNavItem" title="Search"><Search size={20}/></button>
+          <button type="button" className="sidebarNavItem" title="Companies"><BriefcaseBusiness size={20}/></button>
+          <button type="button" className="sidebarNavItem active" title="Lead List"><ContactRound size={20}/></button>
+          <button type="button" className="sidebarNavItem" title="Settings"><Settings size={20}/></button>
+        </nav>
+        <div className="sidebarBottom"><Linkedin size={19}/></div>
+      </aside>
       <header className="topbar">
         <div className="brand"><span className="brandIcon"><Linkedin size={22} /></span><div><strong>ProfileDesk</strong><small>LinkedIn data viewer</small></div></div>
         {/* <div className="authActions">
@@ -326,7 +495,7 @@ async function confirmDelete() {
       </header>
 
       <section className="hero">
-        <div><p className="eyebrow">LINKEDIN PROFILE EXTRACTION</p><h1>LinkedIn Profiles</h1><p className="subtext">Sign in to save your own LinkedIn basic profile, or view records already stored in this app.</p></div>
+        <div><p className="eyebrow">LINKEDIN CONTACTS</p><h1>Lead List</h1><p className="subtext">Manage saved LinkedIn profiles and contact details.</p></div>
       </section>
 
       {/* <form className="extractPanel" onSubmit={extractProfile}>
@@ -340,13 +509,30 @@ async function confirmDelete() {
       {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
       {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
 
-      <section className="stats">
-        <div className="statCard"><span className="statIcon"><Users size={19} /></span><div><small>Total profiles</small><strong>{profiles.length}</strong></div></div>
-        <div className="statCard"><span className="statIcon blue"><Linkedin size={19} /></span><div><small>Showing results</small><strong>{filtered.length}</strong></div></div>
-      </section>
+      <div className="leadWorkspace">
+        <aside className="filterPanel">
+          <div className="filterPanelHeading"><div><SlidersHorizontal size={16}/><strong>Filters</strong></div><button type="button" onClick={() => { setFilters({ name: "", location: "", company: "", title: "", industry: "", revealed: "all", status: "all" }); setSearch(""); setCurrentPage(1); }}>Clear all</button></div>
+          <div className="filterFields">
+            <label><span>Contact name</span><input value={filters.name} onChange={e => setFilters(v => ({ ...v, name: e.target.value }))} placeholder="Contact name"/></label>
+            <label><span>Contact location</span><input value={filters.location} onChange={e => setFilters(v => ({ ...v, location: e.target.value }))} placeholder="Contact location"/></label>
+            <label><span>Company</span><input value={filters.company} onChange={e => setFilters(v => ({ ...v, company: e.target.value }))} placeholder="Company"/></label>
+            <label><span>Title</span><input value={filters.title} onChange={e => setFilters(v => ({ ...v, title: e.target.value }))} placeholder="Title"/></label>
+            <label><span>Industry</span><input value={filters.industry} onChange={e => setFilters(v => ({ ...v, industry: e.target.value }))} placeholder="Industry"/></label>
+          </div>
+          <div className="filterFields filterSelects">
+            <label><span>By revealed contacts</span><select value={filters.revealed} onChange={e => setFilters(v => ({ ...v, revealed: e.target.value }))}><option value="all">All contacts</option><option value="yes">With contact details</option><option value="no">Without contact details</option></select></label>
+            <label><span>By profile status</span><select value={filters.status} onChange={e => setFilters(v => ({ ...v, status: e.target.value }))}><option value="all">All profiles</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+          </div>
+          <button className="filterSearchBtn" type="button" onClick={() => setCurrentPage(1)}><Search size={16}/> SEARCH</button>
+        </aside>
+        <div className="resultsColumn">
+          <section className="stats">
+            <div className="statCard"><span className="statIcon"><Users size={19} /></span><div><small>Total profiles</small><strong>{profiles.length}</strong></div></div>
+            <div className="statCard"><span className="statIcon blue"><Linkedin size={19} /></span><div><small>Showing results</small><strong>{filtered.length}</strong></div></div>
+          </section>
 
       <section className="tablePanel">
-        <div className="tableToolbar"><div><h2>Profile records</h2><p>LinkedIn member data saved in the application</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
+        <div className="tableToolbar"><div><h2>Lead List</h2><p>{filtered.length} profiles</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
 
 {viewingProfile && (
   <div className="modalBackdrop" onClick={() => setViewingProfile(null)}>
@@ -681,262 +867,25 @@ async function confirmDelete() {
 )}
 
 
-        <div className="tableWrap"><table><thead><tr>
-      <th style={{ width: "65px", minWidth: "65px" }}>PHOTO</th>
-      <th style={{ width: "160px", minWidth: "160px" }}>NAME</th>
-      <th style={{ width: "100px", minWidth: "100px" }}>GENDER</th>
-      <th style={{ width: "110px", minWidth: "110px" }}>EXP YEARS</th>
-      <th style={{ width: "220px", minWidth: "220px" }}>HEADLINE</th>
-      <th style={{ width: "180px", minWidth: "180px" }}>DESIGNATION</th>
-      <th style={{ width: "150px", minWidth: "150px" }}>COMPANY</th>
-      <th style={{ width: "160px", minWidth: "160px" }}>LOCATION</th>
-      <th style={{ width: "210px", minWidth: "210px" }}>EMAIL</th>
-      <th style={{ width: "140px", minWidth: "140px" }}>PHONE</th>
-      <th style={{ width: "260px", minWidth: "260px" }}>EXPERIENCE</th>
-      <th style={{ width: "260px", minWidth: "260px" }}>EDUCATION</th>
-      <th style={{ width: "220px", minWidth: "220px" }}>SKILLS</th>
-      <th style={{ width: "160px", minWidth: "160px" }}>LANGUAGE</th>
-      <th style={{ width: "180px", minWidth: "180px" }}>COURSE</th>
-      <th style={{ width: "200px", minWidth: "200px" }}>PROJECT</th>
-      <th style={{ width: "200px", minWidth: "200px" }}>CERTIFICATION</th>
-      <th style={{ width: "160px", minWidth: "160px" }}>PATENT</th>
-      <th style={{ width: "180px", minWidth: "180px" }}>PUBLICATION</th>
-      <th style={{ width: "180px", minWidth: "180px" }}>HONOR AWARD</th>
-      <th style={{ width: "180px", minWidth: "180px" }}>ORGANIZATION</th>
-      <th style={{ width: "130px", minWidth: "130px" }}>LINKEDIN URL</th>
-      <th style={{ width: "170px", minWidth: "170px" }}>ACTION</th>
+        <div className="tableWrap"><table className="leadTable"><colgroup><col className="selectCol"/><col className="profileCol"/><col className="companyCol"/><col className="contactCol"/><col className="actionsCol"/></colgroup><thead><tr>
+      <th className="checkCell"><input type="checkbox" aria-label="Select all profiles on this page" checked={paginatedProfiles.length > 0 && paginatedProfiles.every(p => selectedProfiles.includes(String(p.id)))} onChange={e => setSelectedProfiles(e.target.checked ? Array.from(new Set([...selectedProfiles, ...paginatedProfiles.map(p => String(p.id))])) : selectedProfiles.filter(id => !paginatedProfiles.some(p => String(p.id) === id)))} /></th>
+      <th>PROFILE</th><th>COMPANY</th><th>CONTACT DETAILS</th><th className="actionHead">ACTION</th>
     </tr></thead>
     <tbody>{loading ? (
-      <tr><td colSpan="23" className="empty">Loading profiles...</td></tr>
+      <tr><td colSpan="5" className="empty">Loading profiles...</td></tr>
     ) : filtered.length === 0 ? (
-      <tr><td colSpan="23" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
+      <tr><td colSpan="5" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
     ) : (
       paginatedProfiles.map((profile) => (
         <tr key={profile.id}>
-          {/* 1. PHOTO */}
-          <td>
-            {profile.photoUrl && profile.photoUrl !== "Not Available" ? (
-              <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/>
-            ) : (
-              <span className="notAvailablePhoto">Not Available</span>
-            )}
-          </td>
-
-          {/* 2. NAME */}
-          <td>
-            <div className="tableNameWrap">
-              <strong className="profileNameText">{profile.name || "Not Available"}</strong>
-            </div>
-          </td>
-
-          {/* 3. GENDER */}
-          <td>
-            {profile.gender && profile.gender !== "Not Available" ? (
-              <span className="tableSolidText">{profile.gender}</span>
-            ) : (
-              <span className="emptyCellText">Not Available</span>
-            )}
-          </td>
-
-          {/* 4. EXP YEARS */}
-          <td>
-            {profile.experienceYears !== null && profile.experienceYears !== undefined && profile.experienceYears !== "" && profile.experienceYears !== "Not Available" ? (
-              <span className="tableSolidText">{profile.experienceYears} yr{Number(profile.experienceYears) === 1 ? "" : "s"}</span>
-            ) : (
-              <span className="emptyCellText">Not Available</span>
-            )}
-          </td>
-
-          {/* 5. HEADLINE */}
-          <td>
-            {profile.headLine && profile.headLine !== "Not Available" ? (
-              <div className="tableHeadlineText">{profile.headLine}</div>
-            ) : (
-              <span className="emptyCellText">Not Available</span>
-            )}
-          </td>
-
-          {/* 6. DESIGNATION */}
-          <td>
-            <div className="tableDesignationText">
-              {profile.designation || profile.headline || "Not Available"}
-            </div>
-          </td>
-
-          {/* 7. COMPANY */}
-          <td>
-            <div className="tableCompanyWrap">
-              <strong className="tableCompanyText">{profile.company || "Not Available"}</strong>
-              {profile.experiences?.[0]?.industry ? (
-                <div className="tableSubMeta">{profile.experiences[0].industry}</div>
-              ) : null}
-            </div>
-          </td>
-
-          {/* 8. LOCATION */}
-          <td>
-            <div className="tableLocationText">
-              {[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}
-            </div>
-          </td>
-
-          {/* 9. EMAIL */}
-          <td>
-            <div className="tableContactCol">
-              <div className="tableEmailPrimary">{profile.email || "Not Available"}</div>
-              {profile.personalEmail && profile.personalEmail !== profile.email ? (
-                <div className="tableEmailSecondary">
-                  Personal: {profile.personalEmail}
-                </div>
-              ) : null}
-            </div>
-          </td>
-
-          {/* 10. PHONE */}
-          <td>
-            <div className="tablePhonePrimary">{profile.phone || "Not Available"}</div>
-          </td>
-
-          {/* 11. EXPERIENCE */}
-          <td>
-            {profile.experiences && profile.experiences.length > 0 ? (
-              <div className="tableCellList">
-                {profile.experiences.map((exp, idx) => (
-                  <div key={idx} className="tableCellListItem">
-                    <div className="tableItemHead">
-                      <strong>{exp.position || "Position"}</strong>
-                      {exp.company && exp.company !== "Not Available" ? ` @ ${exp.company}` : ""}
-                    </div>
-                    <div className="tableItemSub">
-                      {[exp.started, exp.ended].filter(Boolean).join(" - ") || (exp.current ? "Present" : "")}
-                      {exp.location ? ` • ${exp.location}` : ""}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span className="emptyCellText">Not Available</span>
-            )}
-          </td>
-
-          {/* 12. EDUCATION */}
-          <td>
-            {profile.educations && profile.educations.length > 0 ? (
-              <div className="tableCellList">
-                {profile.educations.map((edu, idx) => (
-                  <div key={idx} className="tableCellListItem">
-                    <div className="tableItemHead">
-                      <strong>{edu.degree || "Degree"}</strong>
-                      {edu.faculty ? ` in ${edu.faculty.trim()}` : ""}
-                    </div>
-                    <div className="tableItemSub">
-                      {edu.university || "University"}
-                      {[edu.startedYear, edu.endedYear].filter(Boolean).length > 0
-                        ? ` (${[edu.startedYear, edu.endedYear].filter(Boolean).join(" - ")})`
-                        : ""}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span className="emptyCellText">Not Available</span>
-            )}
-          </td>
-
-          {/* 13. SKILLS */}
-          <td>
-            {profile.skills && profile.skills.length > 0 ? (
-              <div className="tableSkillsCell">
-                <div className="tableSkillChips">
-                  {profile.skills.slice(0, 4).map((skill, idx) => (
-                    <span key={idx} className="tableSkillChip">{skill}</span>
-                  ))}
-                </div>
-                {profile.skills.length > 4 && (
-                  <button
-                    type="button"
-                    className="tableMoreBtn"
-                    onClick={() => setViewingProfile(profile)}
-                    title="Click to view all skills"
-                  >
-                    +{profile.skills.length - 4} more
-                  </button>
-                )}
-              </div>
-            ) : (
-              <span className="emptyCellText">Not Available</span>
-            )}
-          </td>
-
-          {/* 14. LANGUAGE */}
-          <td>{renderPills(profile.language || profile.languages, 3)}</td>
-
-          {/* 15. COURSE */}
-          <td>{renderPills(profile.course || profile.courses, 3)}</td>
-
-          {/* 16. PROJECT */}
-          <td>{renderPills(profile.project || profile.projects, 2)}</td>
-
-          {/* 17. CERTIFICATION */}
-          <td>{renderPills(profile.certification || profile.certifications, 2)}</td>
-
-          {/* 18. PATENT */}
-          <td>{renderPills(profile.patent || profile.patents, 2)}</td>
-
-          {/* 19. PUBLICATION */}
-          <td>{renderPills(profile.publication || profile.publications, 2)}</td>
-
-          {/* 20. HONOR AWARD */}
-          <td>{renderPills(profile.honorAward || profile.honorAwards || profile.honors, 2)}</td>
-
-          {/* 21. ORGANIZATION */}
-          <td>{renderPills(profile.organization || profile.organizations, 2)}</td>
-
-          {/* 22. LINKEDIN URL */}
-          <td>
-            {profile.profileUrl && profile.profileUrl !== "Not Available" ? (
-              <a
-                href={profile.profileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="tableLinkedinLink"
-                title={profile.profileUrl}
-              >
-                <Linkedin size={13} />
-                <span>Profile ↗</span>
-              </a>
-            ) : (
-              <span className="emptyCellText">Not Available</span>
-            )}
-          </td>
-
-          {/* 23. ACTION */}
-          <td>
-            <div className="actionButtons">
-              <button
-                className="viewBtn"
-                type="button"
-                onClick={() => setViewingProfile(profile)}
-                title="View full candidate details"
-              >
-                View
-              </button>
-              <button
-                className="editBtn"
-                type="button"
-                onClick={() => startEdit(profile)}
-              >
-                Edit
-              </button>
-              <button
-                className="deleteBtn"
-                type="button"
-                onClick={() => setDeletingProfile(profile)}
-              >
-                Delete
-              </button>
-            </div>
-          </td>
+          <td className="checkCell"><input type="checkbox" aria-label={`Select ${profile.name || "profile"}`} checked={selectedProfiles.includes(String(profile.id))} onChange={e => setSelectedProfiles(current => e.target.checked ? [...current, String(profile.id)] : current.filter(id => id !== String(profile.id)))}/></td>
+          <td><div className="profileCell">
+            {profile.photoUrl && profile.photoUrl !== "Not Available" ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="profileAvatarPlaceholder">{(profile.name || "?").charAt(0).toUpperCase()}</span>}
+            <div className="profileText"><button type="button" className="profileName" onClick={() => setViewingProfile(profile)}>{profile.name || "Not Available"}</button><span>{profile.designation || profile.headline || "Not Available"}</span>{profile.profileUrl && profile.profileUrl !== "Not Available" && <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="profileSocial"><Linkedin size={13}/></a>}</div>
+          </div></td>
+          <td><div className="companyCell"><span className="companyMark">{(profile.company || "C").charAt(0).toUpperCase()}</span><div><strong>{profile.company || "Not Available"}</strong><span><MapPin size={12}/>{[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}</span></div></div></td>
+          <td><div className="contactCell"><span><Mail size={14}/><span>{profile.email || "Not Available"}</span></span>{profile.personalEmail && profile.personalEmail !== profile.email && <span className="secondaryContact"><Mail size={14}/><span>{profile.personalEmail}</span></span>}<span><Phone size={14}/><span>{profile.phone || "Not Available"}</span></span></div></td>
+          <td><div className="actionButtons"><button className="viewBtn" type="button" onClick={() => setViewingProfile(profile)} title="View full details">View</button><button className="editBtn" type="button" onClick={() => startEdit(profile)} title="Edit profile">Edit</button><button className="deleteBtn" type="button" onClick={() => deleteProfile(profile)} title="Delete profile"><MoreHorizontal size={15}/></button><div className="rowExportWrap"><button className="exportBtn" type="button" onClick={() => setExportMenuFor(current => current === String(profile.id) ? null : String(profile.id))} aria-expanded={exportMenuFor === String(profile.id)} title="Export profiles"><DownloadCloud size={13}/>Export<ChevronDown size={12}/></button>{exportMenuFor === String(profile.id) && <div className="exportDropdown"><button type="button" onClick={() => exportProfiles("excel")} disabled={Boolean(exportingFormat)}><FileSpreadsheet size={15}/>Excel (.xlsx)</button><button type="button" onClick={() => exportProfiles("pdf")} disabled={Boolean(exportingFormat)}><FileText size={15}/>PDF (.pdf)</button></div>}</div></div></td>
         </tr>
       ))
     )}</tbody></table></div>
@@ -987,6 +936,8 @@ async function confirmDelete() {
         </div>
         <div className="tableFooter">Showing {filtered.length} of {profiles.length} profiles <span>Profile details received from LinkedIn Contact Finder</span></div>
       </section>
+        </div>
+      </div>
       <footer>ProfileDesk <span>•</span> React + Express</footer>
 
     </main>
