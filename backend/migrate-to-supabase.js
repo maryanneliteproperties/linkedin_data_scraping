@@ -28,12 +28,21 @@ async function run() {
   let backupProfiles = [];
   try {
     const backupText = await fs.readFile(path.join(here, "data", "profiles-conflict-backup.json"), "utf8");
+    // Normalize Windows (CRLF), classic Mac (CR), and Unix (LF) line endings
+    // before locating Git conflict markers.
+    const normalizedBackupText = backupText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const separator = "\n=======\n";
     const endMarker = "\n>>>>>>> Stashed changes";
-    if (backupText.includes(separator) && backupText.includes(endMarker)) {
-      backupProfiles = JSON.parse(backupText.slice(backupText.indexOf(separator) + separator.length, backupText.indexOf(endMarker)));
+    const separatorIndex = normalizedBackupText.indexOf(separator);
+    const endIndex = normalizedBackupText.indexOf(endMarker, separatorIndex + separator.length);
+
+    if (separatorIndex !== -1 && endIndex !== -1) {
+      const stashedJson = normalizedBackupText
+        .slice(separatorIndex + separator.length, endIndex)
+        .trim();
+      backupProfiles = JSON.parse(stashedJson);
     } else {
-      backupProfiles = JSON.parse(backupText);
+      backupProfiles = JSON.parse(normalizedBackupText);
     }
     if (!Array.isArray(backupProfiles)) throw new Error("Conflict backup does not contain a profile array.");
   } catch (error) {
