@@ -506,3 +506,13 @@ body{background:#f5f6f8}
   .paginationControls{flex-wrap:wrap}
 }
 @media(max-width:480px){.filterFields{grid-template-columns:1fr}.resultsColumn .stats{gap:7px}.resultsColumn .statCard{padding:9px;min-width:0;flex:1}}
+
+/* Keep the content header compact like the reference lead-list screen */
+.topbar{display:none}
+.hero{padding:25px 0 17px}
+.hero .eyebrow{margin-bottom:6px}
+.hero h1{font-size:25px}
+.hero .subtext{margin-top:5px}
+.resultsColumn>.stats{display:none}
+.tableToolbar h2{font-size:15px}
+.tableToolbar p{color:#8b97a6}
