@@ -511,7 +511,7 @@ app.get("/api/profiles", auth.requireAuth, async (req, res, next) => {
       return assignment?.assignedToId === req.authUser.id;
     });
     if (query) {
-      results = profiles.filter((p) => {
+      results = results.filter((p) => {
         const textToSearch = [
           p.name,
           p.designation,
