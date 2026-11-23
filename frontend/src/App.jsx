@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save } from "lucide-react";
+import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save, Home, ContactRound, BriefcaseBusiness, Settings, MapPin, Mail, Phone, SlidersHorizontal, ChevronDown, MoreHorizontal } from "lucide-react";
 
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
@@ -24,6 +24,8 @@ export default function App() {
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [filters, setFilters] = useState({ name: "", location: "", company: "", title: "", industry: "", revealed: "all", status: "all" });
+  const [selectedProfiles, setSelectedProfiles] = useState([]);
 
   
 
@@ -87,12 +89,28 @@ export default function App() {
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase().trim();
-    if (!term) return profiles;
-    return profiles.filter((profile) => [
-      profile.name, profile.email, profile.headline, profile.company, profile.location,
-      profile.description, profile.phone, ...(profile.skills || [])
-    ].join(" ").toLowerCase().includes(term));
-  }, [profiles, search]);
+    return profiles.filter((profile) => {
+      const searchable = [
+        profile.name, profile.email, profile.personalEmail, profile.headline,
+        profile.designation, profile.company, profile.location, profile.city,
+        profile.country, profile.description, profile.phone, ...(profile.skills || [])
+      ].join(" ").toLowerCase();
+      const name = String(profile.name || "").toLowerCase();
+      const location = [profile.city, profile.country, profile.location].join(" ").toLowerCase();
+      const company = String(profile.company || "").toLowerCase();
+      const title = String(profile.designation || profile.headline || "").toLowerCase();
+      const hasContact = Boolean((profile.email && profile.email !== "Not Available") || (profile.phone && profile.phone !== "Not Available") || (profile.personalEmail && profile.personalEmail !== "Not Available"));
+      const active = profile.status ? String(profile.status).toLowerCase() === "active" : true;
+      return (!term || searchable.includes(term))
+        && (!filters.name || name.includes(filters.name.toLowerCase()))
+        && (!filters.location || location.includes(filters.location.toLowerCase()))
+        && (!filters.company || company.includes(filters.company.toLowerCase()))
+        && (!filters.title || title.includes(filters.title.toLowerCase()))
+        && (!filters.industry || String(profile.industry || "").toLowerCase().includes(filters.industry.toLowerCase()))
+        && (filters.revealed === "all" || (filters.revealed === "yes" ? hasContact : !hasContact))
+        && (filters.status === "all" || (filters.status === "active" ? active : !active));
+    });
+  }, [profiles, search, filters]);
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -301,10 +319,27 @@ async function confirmDelete() {
       {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
       {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
 
-      <section className="stats">
-        <div className="statCard"><span className="statIcon"><Users size={19} /></span><div><small>Total profiles</small><strong>{profiles.length}</strong></div></div>
-        <div className="statCard"><span className="statIcon blue"><Linkedin size={19} /></span><div><small>Showing results</small><strong>{filtered.length}</strong></div></div>
-      </section>
+      <div className="leadWorkspace">
+        <aside className="filterPanel">
+          <div className="filterPanelHeading"><div><SlidersHorizontal size={16}/><strong>Filters</strong></div><button type="button" onClick={() => { setFilters({ name: "", location: "", company: "", title: "", industry: "", revealed: "all", status: "all" }); setSearch(""); setCurrentPage(1); }}>Clear all</button></div>
+          <div className="filterFields">
+            <label><span>Contact name</span><input value={filters.name} onChange={e => setFilters(v => ({ ...v, name: e.target.value }))} placeholder="Contact name"/></label>
+            <label><span>Contact location</span><input value={filters.location} onChange={e => setFilters(v => ({ ...v, location: e.target.value }))} placeholder="Contact location"/></label>
+            <label><span>Company</span><input value={filters.company} onChange={e => setFilters(v => ({ ...v, company: e.target.value }))} placeholder="Company"/></label>
+            <label><span>Title</span><input value={filters.title} onChange={e => setFilters(v => ({ ...v, title: e.target.value }))} placeholder="Title"/></label>
+            <label><span>Industry</span><input value={filters.industry} onChange={e => setFilters(v => ({ ...v, industry: e.target.value }))} placeholder="Industry"/></label>
+          </div>
+          <div className="filterFields filterSelects">
+            <label><span>By revealed contacts</span><select value={filters.revealed} onChange={e => setFilters(v => ({ ...v, revealed: e.target.value }))}><option value="all">All contacts</option><option value="yes">With contact details</option><option value="no">Without contact details</option></select></label>
+            <label><span>By profile status</span><select value={filters.status} onChange={e => setFilters(v => ({ ...v, status: e.target.value }))}><option value="all">All profiles</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+          </div>
+          <button className="filterSearchBtn" type="button" onClick={() => setCurrentPage(1)}><Search size={16}/> SEARCH</button>
+        </aside>
+        <div className="resultsColumn">
+          <section className="stats">
+            <div className="statCard"><span className="statIcon"><Users size={19} /></span><div><small>Total profiles</small><strong>{profiles.length}</strong></div></div>
+            <div className="statCard"><span className="statIcon blue"><Linkedin size={19} /></span><div><small>Showing results</small><strong>{filtered.length}</strong></div></div>
+          </section>
 
       <section className="tablePanel">
         <div className="tableToolbar"><div><h2>Profile records</h2><p>LinkedIn member data saved in the application</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
@@ -635,75 +670,25 @@ async function confirmDelete() {
 )}
 
 
-        <div className="tableWrap"><table><thead><tr>
-      <th style={{ width: "70px" }}>PHOTO</th>
-      <th>NAME</th>
-      <th>DESIGNATION</th>
-      <th>COMPANY</th>
-      <th>LOCATION</th>
-      <th>EMAIL</th>
-      <th>PHONE</th>
-      <th>BACKGROUND</th>
-      <th style={{ width: "170px" }}>ACTION</th>
+        <div className="tableWrap"><table className="leadTable"><colgroup><col className="selectCol"/><col className="profileCol"/><col className="companyCol"/><col className="contactCol"/><col className="actionsCol"/></colgroup><thead><tr>
+      <th className="checkCell"><input type="checkbox" aria-label="Select all profiles on this page" checked={paginatedProfiles.length > 0 && paginatedProfiles.every(p => selectedProfiles.includes(String(p.id)))} onChange={e => setSelectedProfiles(e.target.checked ? Array.from(new Set([...selectedProfiles, ...paginatedProfiles.map(p => String(p.id))])) : selectedProfiles.filter(id => !paginatedProfiles.some(p => String(p.id) === id)))} /></th>
+      <th>PROFILE</th><th>COMPANY</th><th>CONTACT DETAILS</th><th className="actionHead">ACTION</th>
     </tr></thead>
     <tbody>{loading ? (
-      <tr><td colSpan="9" className="empty">Loading profiles...</td></tr>
+      <tr><td colSpan="5" className="empty">Loading profiles...</td></tr>
     ) : filtered.length === 0 ? (
-      <tr><td colSpan="9" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
+      <tr><td colSpan="5" className="empty">No profiles found. Save profile details from the LinkedIn extension.</td></tr>
     ) : (
       paginatedProfiles.map((profile) => (
         <tr key={profile.id}>
-          <td>
-            {profile.photoUrl && profile.photoUrl !== "Not Available" ? (
-              <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/>
-            ) : (
-              <span className="notAvailablePhoto">Not Available</span>
-            )}
-          </td>
-          <td><strong>{profile.name || "Not Available"}</strong></td>
-          <td>{profile.designation || profile.headline || "Not Available"}</td>
-          <td>{profile.company || "Not Available"}</td>
-          <td>{[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}</td>
-          <td>
-            <div>{profile.email || "Not Available"}</div>
-            {profile.personalEmail && profile.personalEmail !== profile.email ? (
-              <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px" }}>
-                Personal: {profile.personalEmail}
-              </div>
-            ) : null}
-          </td>
-          <td>{profile.phone || "Not Available"}</td>
-          <td>
-            <div style={{ fontSize: "12px", color: "#334155" }}>
-              {profile.experiences?.length ? `${profile.experiences.length} Exps` : "No Exp"} • {profile.skills?.length ? `${profile.skills.length} Skills` : "No Skills"}
-            </div>
-          </td>
-          <td>
-            <div className="actionButtons">
-              <button
-                className="viewBtn"
-                type="button"
-                onClick={() => setViewingProfile(profile)}
-                title="View full details"
-              >
-                View
-              </button>
-              <button
-                className="editBtn"
-                type="button"
-                onClick={() => startEdit(profile)}
-              >
-                Edit
-              </button>
-              <button
-                className="deleteBtn"
-                type="button"
-                onClick={() => deleteProfile(profile)}
-              >
-                Delete
-              </button>
-            </div>
-          </td>
+          <td className="checkCell"><input type="checkbox" aria-label={`Select ${profile.name || "profile"}`} checked={selectedProfiles.includes(String(profile.id))} onChange={e => setSelectedProfiles(current => e.target.checked ? [...current, String(profile.id)] : current.filter(id => id !== String(profile.id)))}/></td>
+          <td><div className="profileCell">
+            {profile.photoUrl && profile.photoUrl !== "Not Available" ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="profileAvatarPlaceholder">{(profile.name || "?").charAt(0).toUpperCase()}</span>}
+            <div className="profileText"><button type="button" className="profileName" onClick={() => setViewingProfile(profile)}>{profile.name || "Not Available"}</button><span>{profile.designation || profile.headline || "Not Available"}</span>{profile.profileUrl && profile.profileUrl !== "Not Available" && <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="profileSocial"><Linkedin size={13}/></a>}</div>
+          </div></td>
+          <td><div className="companyCell"><span className="companyMark">{(profile.company || "C").charAt(0).toUpperCase()}</span><div><strong>{profile.company || "Not Available"}</strong><span><MapPin size={12}/>{[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}</span></div></div></td>
+          <td><div className="contactCell"><span><Mail size={14}/><span>{profile.email || "Not Available"}</span></span>{profile.personalEmail && profile.personalEmail !== profile.email && <span className="secondaryContact"><Mail size={14}/><span>{profile.personalEmail}</span></span>}<span><Phone size={14}/><span>{profile.phone || "Not Available"}</span></span></div></td>
+          <td><div className="actionButtons"><button className="viewBtn" type="button" onClick={() => setViewingProfile(profile)} title="View full details">View</button><button className="editBtn" type="button" onClick={() => startEdit(profile)} title="Edit profile">Edit</button><button className="deleteBtn" type="button" onClick={() => deleteProfile(profile)} title="Delete profile"><MoreHorizontal size={15}/></button></div></td>
         </tr>
       ))
     )}</tbody>
@@ -755,6 +740,8 @@ async function confirmDelete() {
         </div>
         <div className="tableFooter">Showing {filtered.length} of {profiles.length} profiles <span>Profile details received from LinkedIn Contact Finder</span></div>
       </section>
+        </div>
+      </div>
       <footer>ProfileDesk <span>•</span> React + Express</footer>
 
     </main>
