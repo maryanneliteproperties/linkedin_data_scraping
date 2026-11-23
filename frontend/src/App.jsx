@@ -114,6 +114,10 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (authUser && authUser.role !== "Admin" && activePage !== "leads") navigateToPage("leads");
+  }, [authUser, activePage]);
+
+  useEffect(() => {
     if (authUser?.role !== "Admin") return;
     fetch(`${API}/admin/users`, { credentials: "include" })
       .then((response) => response.ok ? response.json() : [])
@@ -530,6 +534,7 @@ async function confirmDelete() {
     try {
       await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
     } finally {
+      navigateToPage("leads");
       setAuthUser(null);
       setProfiles([]);
       setNotice("");
