@@ -30,7 +30,7 @@ npm install
 npm run migrate:supabase
 ```
 
-Run the migration **before starting the backend for the first time with Supabase configured**. It imports `data/users.json` and `data/profiles.json` when present. It also recovers the stashed JSON array from the repository's historical `profiles-conflict-backup.json` file and adds any profile IDs not already present. It refuses to run if either Supabase table already has rows, preventing accidental overwrites. Admin usernames are migrated as null; Sub Admin and Employee usernames are preserved. PIN salt/hash values are copied without changing the existing PINs.
+The install command also refreshes `backend/package-lock.json`; include that updated lockfile in your next Git commit. Run the migration **before starting the backend for the first time with Supabase configured**. It imports `data/users.json` and `data/profiles.json` when present. It also recovers the stashed JSON array from the repository's historical `profiles-conflict-backup.json` file and adds any profile IDs not already present. It refuses to run if either Supabase table already has rows, preventing accidental overwrites. Admin usernames are migrated as null; Sub Admin and Employee usernames are preserved. PIN salt/hash values are copied without changing the existing PINs.
 
 Keep the original JSON files as a backup until the migration reports success and you verify the record counts in Supabase. Do not manually delete them before that verification.
 
