@@ -955,3 +955,14 @@ body{background:#f5f6f8}
 .assignedTaskEmployee th:nth-child(4) { width: 150px; }
 .assignedTaskEmployee th:nth-child(5) { width: 120px; }
 .assignedTaskEmployee th:nth-child(6) { width: 130px; }
+
+
+/* Give the Profile column more room in every Assigned Task role layout */
+.assignedTaskAdmin { min-width: 1180px; }
+.assignedTaskAdmin th:nth-child(2) { width: 320px; }
+
+.assignedTaskSubAdmin { min-width: 1370px; }
+.assignedTaskSubAdmin th:nth-child(2) { width: 320px; }
+
+.assignedTaskEmployee { min-width: 1180px; }
+.assignedTaskEmployee th:nth-child(1) { width: 320px; }
