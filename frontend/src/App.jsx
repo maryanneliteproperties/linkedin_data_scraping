@@ -363,8 +363,10 @@ export default function App() {
 
 
 function canManageProfile(profile) {
-  if (authUser?.role === "Admin") return true;
   const assignment = profile?.assignment;
+  // Admin can manage only profiles created by Admin (legacy profiles without
+  // creator metadata remain manageable); Sub Admin-owned profiles are read-only.
+  if (authUser?.role === "Admin") return profile?.createdByRole !== "Sub Admin";
   if (authUser?.role === "Sub Admin") return assignment?.assignedByRole !== "Admin";
   if (authUser?.role === "Employee") return !assignment;
   return false;
@@ -1062,7 +1064,7 @@ async function confirmDelete() {
 
 
         <div className="tableWrap"><table className="leadTable"><colgroup><col className="selectCol"/><col className="profileCol"/><col className="companyCol"/><col className="contactCol"/><col className="actionsCol"/></colgroup><thead><tr>
-      <th className="checkCell"><input type="checkbox" aria-label="Select all profiles on this page" checked={paginatedProfiles.length > 0 && paginatedProfiles.every(p => selectedProfiles.includes(String(p.id)))} disabled={authUser.role === "Employee" || (authUser.role === "Sub Admin" && leadTab !== "admin")} onChange={e => setSelectedProfiles(e.target.checked ? Array.from(new Set([...selectedProfiles, ...paginatedProfiles.map(p => String(p.id))])) : selectedProfiles.filter(id => !paginatedProfiles.some(p => String(p.id) === id)))} /></th>
+      <th className="checkCell">{paginatedProfiles.some(canManageProfile) && <input type="checkbox" aria-label="Select all manageable profiles on this page" checked={paginatedProfiles.filter(canManageProfile).length > 0 && paginatedProfiles.filter(canManageProfile).every(p => selectedProfiles.includes(String(p.id)))} onChange={e => { const manageableIds = paginatedProfiles.filter(canManageProfile).map(p => String(p.id)); setSelectedProfiles(e.target.checked ? Array.from(new Set([...selectedProfiles, ...manageableIds])) : selectedProfiles.filter(id => !manageableIds.includes(id))); }} />}</th>
       <th>PROFILE</th><th>COMPANY</th><th>CONTACT DETAILS</th><th className="actionHead">ACTION</th>
     </tr></thead>
     <tbody>{loading ? (
@@ -1072,7 +1074,7 @@ async function confirmDelete() {
     ) : (
       paginatedProfiles.map((profile) => (
         <tr key={profile.id}>
-          <td className="checkCell"><input type="checkbox" aria-label={`Select ${profile.name || "profile"}`} checked={selectedProfiles.includes(String(profile.id))} disabled={authUser.role === "Employee" || (authUser.role === "Sub Admin" && leadTab !== "admin")} onChange={e => setSelectedProfiles(current => e.target.checked ? [...current, String(profile.id)] : current.filter(id => id !== String(profile.id)))}/></td>
+          <td className="checkCell">{canManageProfile(profile) && <input type="checkbox" aria-label={`Select ${profile.name || "profile"}`} checked={selectedProfiles.includes(String(profile.id))} onChange={e => setSelectedProfiles(current => e.target.checked ? [...current, String(profile.id)] : current.filter(id => id !== String(profile.id)))}/>}</td>
           <td><div className="profileCell">
             {profile.photoUrl && profile.photoUrl !== "Not Available" ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="profileAvatarPlaceholder">{(profile.name || "?").charAt(0).toUpperCase()}</span>}
             <div className="profileText"><button type="button" className="profileName" onClick={() => setViewingProfile(profile)}>{profile.name || "Not Available"}</button><span>{profile.designation || profile.headline || "Not Available"}</span>{profile.profileUrl && profile.profileUrl !== "Not Available" && <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="profileSocial"><Linkedin size={13}/></a>}</div>
