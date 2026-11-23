@@ -388,7 +388,7 @@ app.post("/api/profiles/signalhire", auth.requireAuth, async (req, res) => {
       });
     }
 
-    // Auto-update or create in profiles.json if found
+    // Auto-update an existing profile in Supabase when SignalHire returns a match
     try {
       const profiles = await readProfiles();
       const normalized = normalizeProfile(result.profile);
