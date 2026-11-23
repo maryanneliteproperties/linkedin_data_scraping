@@ -361,7 +361,19 @@ export default function App() {
   }
 
 
+function canManageProfile(profile) {
+  if (authUser?.role === "Admin") return true;
+  const assignment = profile?.assignment;
+  if (authUser?.role === "Sub Admin") return assignment?.assignedByRole !== "Admin";
+  if (authUser?.role === "Employee") return !assignment;
+  return false;
+}
+
 function startEdit(profile) {
+  if (!canManageProfile(profile)) {
+    setError("You do not have permission to edit this assigned task.");
+    return;
+  }
   setEditingProfile(profile);
   setEditForm({
     name: profile.name || "",
@@ -419,6 +431,10 @@ async function saveEdit(event) {
 }
 
 function deleteProfile(profile) {
+  if (!canManageProfile(profile)) {
+    setError("You do not have permission to delete this assigned task.");
+    return;
+  }
   setDeletingProfile(profile);
 }
 
@@ -900,7 +916,7 @@ async function confirmDelete() {
             <span style={{ fontSize: "12px", color: "#64748b" }}>LinkedIn: Not Available</span>
           )}
 
-          <button
+          {canManageProfile(viewingProfile) && <button
             type="button"
             className="editBtn"
             onClick={() => {
@@ -910,7 +926,7 @@ async function confirmDelete() {
             }}
           >
             Edit Profile
-          </button>
+          </button>}
         </div>
       </div>
     </div>
@@ -1062,7 +1078,7 @@ async function confirmDelete() {
           </div></td>
           <td><div className="companyCell"><span className="companyMark">{(profile.company || "C").charAt(0).toUpperCase()}</span><div><strong>{profile.company || "Not Available"}</strong><span><MapPin size={12}/>{[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}</span></div></div></td>
           <td><div className="contactCell"><span><Mail size={14}/><span>{profile.email || "Not Available"}</span></span>{profile.personalEmail && profile.personalEmail !== profile.email && <span className="secondaryContact"><Mail size={14}/><span>{profile.personalEmail}</span></span>}<span><Phone size={14}/><span>{profile.phone || "Not Available"}</span></span></div></td>
-          <td><div className="actionButtons"><button className="viewBtn" type="button" onClick={() => setViewingProfile(profile)} title="View full details">View</button><button className="editBtn" type="button" onClick={() => startEdit(profile)} title="Edit profile">Edit</button><button className="deleteBtn" type="button" onClick={() => deleteProfile(profile)} title="Delete profile"><MoreHorizontal size={15}/></button><div className="rowExportWrap"><button className="exportBtn" type="button" onClick={() => setExportMenuFor(current => current === String(profile.id) ? null : String(profile.id))} aria-expanded={exportMenuFor === String(profile.id)} title="Export profiles"><DownloadCloud size={13}/>Export<ChevronDown size={12}/></button>{exportMenuFor === String(profile.id) && <div className="exportDropdown"><button type="button" onClick={() => exportProfiles("excel")} disabled={Boolean(exportingFormat)}><FileSpreadsheet size={15}/>Excel (.xlsx)</button><button type="button" onClick={() => exportProfiles("pdf")} disabled={Boolean(exportingFormat)}><FileText size={15}/>PDF (.pdf)</button></div>}</div></div></td>
+          <td><div className="actionButtons"><button className="viewBtn" type="button" onClick={() => setViewingProfile(profile)} title="View full details">View</button>{canManageProfile(profile) && <><button className="editBtn" type="button" onClick={() => startEdit(profile)} title="Edit profile">Edit</button><button className="deleteBtn" type="button" onClick={() => deleteProfile(profile)} title="Delete profile"><MoreHorizontal size={15}/></button></>}<div className="rowExportWrap"><button className="exportBtn" type="button" onClick={() => setExportMenuFor(current => current === String(profile.id) ? null : String(profile.id))} aria-expanded={exportMenuFor === String(profile.id)} title="Export profiles"><DownloadCloud size={13}/>Export<ChevronDown size={12}/></button>{exportMenuFor === String(profile.id) && <div className="exportDropdown"><button type="button" onClick={() => exportProfiles("excel")} disabled={Boolean(exportingFormat)}><FileSpreadsheet size={15}/>Excel (.xlsx)</button><button type="button" onClick={() => exportProfiles("pdf")} disabled={Boolean(exportingFormat)}><FileText size={15}/>PDF (.pdf)</button></div>}</div></div></td>
         </tr>
       ))
     )}</tbody>
