@@ -1099,7 +1099,7 @@ async function confirmDelete() {
 
 
         <div className="tableWrap"><table className="leadTable"><colgroup><col className="selectCol"/><col className="profileCol"/><col className="companyCol"/><col className="contactCol"/><col className="actionsCol"/></colgroup><thead><tr>
-      <th className="checkCell">{paginatedProfiles.some(canSelectProfile) && <input> type="checkbox" aria-label="Select all manageable profiles on this page" checked={paginatedProfiles.filter(canSelectProfile).length > 0 && paginatedProfiles.filter(canSelectProfile).every(p => selectedProfiles.includes(String(p.id)))} onChange={e => { const manageableIds = paginatedProfiles.filter(canSelectProfile).map(p => String(p.id)); setSelectedProfiles(e.target.checked ? Array.from(new Set([...selectedProfiles, ...manageableIds])) : selectedProfiles.filter(id => !manageableIds.includes(id))); }} />}</th>
+      <th className="checkCell">{paginatedProfiles.some(canSelectProfile) && <input type="checkbox" aria-label="Select all manageable profiles on this page" checked={paginatedProfiles.filter(canSelectProfile).length > 0 && paginatedProfiles.filter(canSelectProfile).every(p => selectedProfiles.includes(String(p.id)))} onChange={e => { const manageableIds = paginatedProfiles.filter(canSelectProfile).map(p => String(p.id)); setSelectedProfiles(e.target.checked ? Array.from(new Set([...selectedProfiles, ...manageableIds])) : selectedProfiles.filter(id => !manageableIds.includes(id))); }} />}</th>
       <th>PROFILE</th><th>COMPANY</th><th>CONTACT DETAILS</th><th className="actionHead">ACTION</th>
     </tr></thead>
     <tbody>{loading ? (
