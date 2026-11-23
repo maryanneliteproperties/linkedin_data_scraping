@@ -198,10 +198,10 @@ export default function App() {
         ? (leadAssignedToFilter === "all"
           || (leadAssignedToFilter === "admin" && profile.createdByRole === "Admin" && !assignment)
           || (leadAssignedToFilter !== "admin" && ((assignment?.assignedToId === leadAssignedToFilter) || (!assignment && profile.createdById === leadAssignedToFilter && profile.createdByRole === "Sub Admin"))))
-        : authUser?.role === "Sub Admin"
+        : authUser?.role === "Sub Admin" && leadTab === "own"
           ? (leadAssignedToFilter === "all" || (assignment?.assignedToId === leadAssignedToFilter && assignment?.assignedById === authUser.id))
           : true;
-      const assignedByMatches = authUser?.role === "Employee"
+      const assignedByMatches = authUser?.role === "Employee" && leadTab === "own"
         ? (leadAssignedByFilter === "all" || (assignment?.assignedById === leadAssignedByFilter && assignment?.assignedByRole === "Sub Admin"))
         : true;
       return (!term || searchable.includes(term))
