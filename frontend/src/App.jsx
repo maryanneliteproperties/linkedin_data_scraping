@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save, Home, ContactRound, BriefcaseBusiness, Settings, MapPin, Mail, Phone, SlidersHorizontal, ChevronDown, MoreHorizontal, FileSpreadsheet, FileText } from "lucide-react";
+import { Search, Linkedin, RefreshCw, Users, CheckCircle2, AlertCircle, DownloadCloud, LogIn, LogOut, UserRound, Save, Home, ContactRound, BriefcaseBusiness, Settings, MapPin, Mail, Phone, SlidersHorizontal, ChevronDown, MoreHorizontal, FileSpreadsheet, FileText, ListTodo } from "lucide-react";
 
 const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "") + "/api";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
@@ -22,7 +22,15 @@ export default function App() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [adminUsers, setAdminUsers] = useState([]);
-  const [activePage, setActivePage] = useState(window.location.hash === "#employee-accounts" ? "employees" : "leads");
+  const [assignableUsers, setAssignableUsers] = useState([]);
+  const [assignedTasks, setAssignedTasks] = useState([]);
+  const [assignedToId, setAssignedToId] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [leadTab, setLeadTab] = useState("primary");
+  const [taskAssignedToFilter, setTaskAssignedToFilter] = useState("all");
+  const [taskDateFilter, setTaskDateFilter] = useState("");
+  const [taskTodayOnly, setTaskTodayOnly] = useState(false);
+  const [activePage, setActivePage] = useState(window.location.hash === "#employee-accounts" ? "employees" : window.location.hash === "#assigned-tasks" ? "assigned-tasks" : "leads");
   const [editingAccount, setEditingAccount] = useState(null);
   const [accountToDelete, setAccountToDelete] = useState(null);
   const [accountDeleteBusy, setAccountDeleteBusy] = useState(false);
@@ -103,20 +111,20 @@ export default function App() {
   }, [authUser]);
 
   useEffect(() => {
-    const syncRoute = () => setActivePage(window.location.hash === "#employee-accounts" ? "employees" : "leads");
+    const syncRoute = () => setActivePage(window.location.hash === "#employee-accounts" ? "employees" : window.location.hash === "#assigned-tasks" ? "assigned-tasks" : "leads");
     window.addEventListener("popstate", syncRoute);
     window.addEventListener("hashchange", syncRoute);
     return () => { window.removeEventListener("popstate", syncRoute); window.removeEventListener("hashchange", syncRoute); };
   }, []);
 
   function navigateToPage(page) {
-    const hash = page === "employees" ? "#employee-accounts" : "";
+    const hash = page === "employees" ? "#employee-accounts" : page === "assigned-tasks" ? "#assigned-tasks" : "";
     if (window.location.hash !== hash) window.history.pushState(null, "", window.location.pathname + window.location.search + hash);
     setActivePage(page);
   }
 
   useEffect(() => {
-    if (authUser && authUser.role !== "Admin" && activePage !== "leads") navigateToPage("leads");
+    if (authUser && authUser.role !== "Admin" && activePage === "employees") navigateToPage("leads");
   }, [authUser, activePage]);
 
   useEffect(() => {
@@ -127,9 +135,37 @@ export default function App() {
       .catch(() => setAdminUsers([]));
   }, [authUser]);
 
+  useEffect(() => {
+    if (!authUser || !["Admin", "Sub Admin"].includes(authUser.role)) { setAssignableUsers([]); return; }
+    fetch(`${API}/assignable-users`, { credentials: "include" })
+      .then((response) => response.ok ? response.json() : [])
+      .then((users) => setAssignableUsers(Array.isArray(users) ? users : []))
+      .catch(() => setAssignableUsers([]));
+  }, [authUser]);
+
+  async function loadAssignedTasks() {
+    try {
+      const response = await fetch(`${API}/assigned-tasks`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load assigned tasks.");
+      const data = await response.json();
+      setAssignedTasks(Array.isArray(data) ? data : []);
+    } catch (err) { setError(err.message || "Could not load assigned tasks."); }
+  }
+
+  useEffect(() => {
+    if (authUser && activePage === "assigned-tasks") loadAssignedTasks();
+  }, [authUser, activePage]);
+
+  const tabProfiles = useMemo(() => profiles.filter((profile) => {
+    const assignment = profile.assignment;
+    if (authUser?.role === "Sub Admin") return leadTab === "admin" ? assignment?.assignedToId === authUser.id && assignment?.assignedByRole === "Admin" : !assignment;
+    if (authUser?.role === "Employee") return assignment?.assignedToId === authUser.id && assignment?.assignedByRole === (leadTab === "admin" ? "Admin" : "Sub Admin");
+    return !assignment;
+  }), [profiles, authUser, leadTab]);
+
   const filtered = useMemo(() => {
     const term = search.toLowerCase().trim();
-    return profiles.filter((profile) => {
+    return tabProfiles.filter((profile) => {
       const searchable = [
         profile.name, profile.email, profile.personalEmail, profile.headline,
         profile.designation, profile.company, profile.location, profile.city,
@@ -150,7 +186,7 @@ export default function App() {
         && (filters.revealed === "all" || (filters.revealed === "yes" ? hasContact : !hasContact))
         && (filters.status === "all" || (filters.status === "active" ? active : !active));
     });
-  }, [profiles, search, filters]);
+  }, [tabProfiles, search, filters]);
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -159,6 +195,16 @@ export default function App() {
     startIndex,
     startIndex + itemsPerPage
   );
+
+  const filteredAssignedTasks = useMemo(() => assignedTasks.filter((profile) => {
+    const assignment = profile.assignment || {};
+    const assignedAt = assignment.assignedAt ? new Date(assignment.assignedAt) : null;
+    const today = new Date();
+    const isToday = assignedAt && assignedAt.getFullYear() === today.getFullYear() && assignedAt.getMonth() === today.getMonth() && assignedAt.getDate() === today.getDate();
+    return (taskAssignedToFilter === "all" || assignment.assignedToId === taskAssignedToFilter)
+      && (!taskDateFilter || (assignedAt && assignedAt.toISOString().slice(0, 10) === taskDateFilter))
+      && (!taskTodayOnly || isToday);
+  }), [assignedTasks, taskAssignedToFilter, taskDateFilter, taskTodayOnly]);
 
   const firstItem = filtered.length === 0 ? 0 : startIndex + 1;
 
@@ -174,6 +220,20 @@ export default function App() {
       setCurrentPage(maxPage);
     }
   }, [filtered.length, itemsPerPage, currentPage]);
+
+  async function assignSelectedProfiles() {
+    if (!selectedProfiles.length || !assignedToId) { setError("Select profiles and choose an assignee."); return; }
+    setAssigning(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${API}/profiles/assign`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ profileIds: selectedProfiles, assignedToId }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Profile assignment failed.");
+      setSelectedProfiles([]); setAssignedToId("");
+      await loadProfiles(false); await loadAssignedTasks();
+      setNotice(result.message || "Profiles assigned successfully.");
+    } catch (err) { setError(err.message || "Unable to assign profiles."); }
+    finally { setAssigning(false); }
+  }
 
   async function extractProfile(event) {
     event.preventDefault();
@@ -574,6 +634,7 @@ async function confirmDelete() {
           <button type="button" className="sidebarNavItem" title="Search"><Search size={20}/></button>
           <button type="button" className="sidebarNavItem" title="Companies"><BriefcaseBusiness size={20}/></button>
           <button type="button" onClick={() => navigateToPage("leads")} className={"sidebarNavItem" + (activePage === "leads" ? " active" : "")} title="Lead List"><ContactRound size={20}/></button>
+          <button type="button" onClick={() => navigateToPage("assigned-tasks")} className={"sidebarNavItem" + (activePage === "assigned-tasks" ? " active" : "")} title="Assigned Task" aria-label="Assigned Task"><ListTodo size={20}/></button>
           {authUser.role === "Admin" && <button type="button" onClick={() => navigateToPage("employees")} className={"sidebarNavItem" + (activePage === "employees" ? " active" : "")} title="Employee Account" aria-label="Employee Account"><Users size={20}/></button>}
           <button type="button" className="sidebarNavItem" title="Settings"><Settings size={20}/></button>
         </nav>
@@ -650,7 +711,8 @@ async function confirmDelete() {
           </section>
 
       <section className="tablePanel">
-        <div className="tableToolbar"><div><h2>Lead List</h2><p>{filtered.length} profiles</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
+        {(authUser.role === "Sub Admin" || authUser.role === "Employee") && <div className="leadTabs"><button type="button" className={leadTab === "admin" ? "active" : ""} onClick={() => { setLeadTab("admin"); setSelectedProfiles([]); setCurrentPage(1); }}>Assigned by Admin</button><button type="button" className={leadTab === "own" ? "active" : ""} onClick={() => { setLeadTab("own"); setSelectedProfiles([]); setCurrentPage(1); }}>{authUser.role === "Sub Admin" ? "Assigned by Own" : "Assigned by Sub Admin"}</button></div>}
+        <div className="tableToolbar"><div><h2>Lead List</h2><p>{filtered.length} profiles</p></div><div className="toolbarActions">{["Admin", "Sub Admin"].includes(authUser.role) && <div className="assignmentControls"><span>{selectedProfiles.length} selected</span><select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}><option value="">Assigned To</option>{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}</select><button className="primaryBtn" type="button" onClick={assignSelectedProfiles} disabled={assigning || !selectedProfiles.length || !assignedToId}>{assigning ? "Submitting..." : "Submit"}</button></div>}<div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
 
 {viewingProfile && (
   <div className="modalBackdrop" onClick={() => setViewingProfile(null)}>
@@ -1051,6 +1113,17 @@ async function confirmDelete() {
         </div>
       </div>
       <footer>ProfileDesk <span>•</span> React + Express</footer>
+        </>
+      ) : activePage === "assigned-tasks" ? (
+        <>
+          <section className="hero"><div><p className="eyebrow">TASK MANAGEMENT</p><h1>Assigned Task</h1><p className="subtext">Track profiles assigned to your team.</p></div></section>
+          {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
+          {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
+          <section className="tablePanel assignedTasksPanel">
+            <div className="tableToolbar"><div><h2>Assigned Task List</h2><p>{filteredAssignedTasks.length} assigned profiles</p></div><div className="taskFilters"><label>Assigned To<select value={taskAssignedToFilter} onChange={(e) => setTaskAssignedToFilter(e.target.value)}><option value="all">All</option>{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Date<input type="date" value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} /></label><label className="todayFilter"><input type="checkbox" checked={taskTodayOnly} onChange={(e) => setTaskTodayOnly(e.target.checked)} />Today</label><button type="button" className="iconBtn" onClick={loadAssignedTasks} title="Refresh"><RefreshCw size={17}/></button></div></div>
+            <div className="tableWrap"><table className="assignedTaskTable"><thead><tr>{authUser.role !== "Employee" && <th>ASSIGNED TO</th>}<th>PROFILE</th><th>COMPANY</th><th>ASSIGNED BY</th><th>ASSIGNED DATE</th><th>LINKEDIN</th></tr></thead><tbody>{filteredAssignedTasks.length === 0 ? <tr><td colSpan={authUser.role === "Employee" ? 5 : 6} className="empty">No assigned tasks found.</td></tr> : filteredAssignedTasks.map((profile) => <tr key={profile.id}>{authUser.role !== "Employee" && <td><strong>{profile.assignment?.assignedToName || "Not Available"}</strong><small>{profile.assignment?.assignedToRole || ""}</small></td>}<td><strong>{profile.name || "Not Available"}</strong><small>{profile.designation || profile.headline || ""}</small></td><td>{profile.company || "Not Available"}</td><td>{profile.assignment?.assignedByName || "Not Available"}<small>{profile.assignment?.assignedByRole || ""}</small></td><td>{profile.assignment?.assignedAt ? new Date(profile.assignment.assignedAt).toLocaleDateString() : "Not Available"}</td><td>{profile.profileUrl && profile.profileUrl !== "Not Available" ? <a className="profileLink" href={profile.profileUrl} target="_blank" rel="noopener noreferrer">Open Profile ↗</a> : "Not Available"}</td></tr>)}</tbody></table></div>
+          </section>
+          <footer>ProfileDesk <span>•</span> React + Express</footer>
         </>
       ) : (
         <>
