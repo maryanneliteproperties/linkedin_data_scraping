@@ -1141,7 +1141,61 @@ async function confirmDelete() {
           {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
           <section className="tablePanel assignedTasksPanel">
             <div className="tableToolbar"><div><h2>Assigned Task List</h2><p>{filteredAssignedTasks.length} assigned profiles</p></div><div className="taskFilters"><label>Assigned To<select value={taskAssignedToFilter} onChange={(e) => setTaskAssignedToFilter(e.target.value)}><option value="all">All</option>{authUser.role === "Sub Admin" && <option value={authUser.id}>Me</option>}{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Date<input type="date" value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} /></label><label className="todayFilter"><input type="checkbox" checked={taskTodayOnly} onChange={(e) => setTaskTodayOnly(e.target.checked)} />Today</label><button type="button" className="iconBtn" onClick={loadAssignedTasks} title="Refresh"><RefreshCw size={17}/></button></div></div>
-            <div className="tableWrap"><table className="assignedTaskTable"><thead><tr>{authUser.role !== "Employee" && <th>ASSIGNED TO</th>}<th>PROFILE</th><th>COMPANY</th><th>ASSIGNED BY</th><th>ASSIGNED DATE</th><th>LINKEDIN</th></tr></thead><tbody>{filteredAssignedTasks.length === 0 ? <tr><td colSpan={authUser.role === "Employee" ? 5 : 6} className="empty">No assigned tasks found.</td></tr> : filteredAssignedTasks.map((profile) => <tr key={profile.id}>{authUser.role !== "Employee" && <td><strong>{profile.assignment?.assignedToName || "Not Available"}</strong><small>{profile.assignment?.assignedToRole || ""}</small></td>}<td><strong>{profile.name || "Not Available"}</strong><small>{profile.designation || profile.headline || ""}</small></td><td>{profile.company || "Not Available"}</td><td>{profile.assignment?.assignedByName || "Not Available"}<small>{profile.assignment?.assignedByRole || ""}</small></td><td>{profile.assignment?.assignedAt ? new Date(profile.assignment.assignedAt).toLocaleDateString() : "Not Available"}</td><td>{profile.profileUrl && profile.profileUrl !== "Not Available" ? <a className="profileLink" href={profile.profileUrl} target="_blank" rel="noopener noreferrer">Open Profile ↗</a> : "Not Available"}</td></tr>)}</tbody></table></div>
+            <div className="tableWrap">
+              <table className={`assignedTaskTable ${authUser.role === "Admin" ? "assignedTaskAdmin" : authUser.role === "Sub Admin" ? "assignedTaskSubAdmin" : "assignedTaskEmployee"}`}>
+                <thead>
+                  <tr>
+                    {authUser.role !== "Employee" && <th>ASSIGNED TO</th>}
+                    <th>PROFILE</th>
+                    <th>COMPANY</th>
+                    <th>CONTACT DETAILS</th>
+                    {authUser.role !== "Admin" && <th>ASSIGNED BY</th>}
+                    <th>ASSIGNED DATE</th>
+                    <th>LINKEDIN</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAssignedTasks.length === 0 ? (
+                    <tr><td colSpan={authUser.role === "Admin" ? 6 : authUser.role === "Sub Admin" ? 7 : 6} className="empty">No assigned tasks found.</td></tr>
+                  ) : filteredAssignedTasks.map((profile) => (
+                    <tr key={profile.id}>
+                      {authUser.role !== "Employee" && (
+                        <td className="assignedToCell">
+                          <strong>{profile.assignment?.assignedToName || "Not Available"}</strong>
+                          <small>{profile.assignment?.assignedToRole || ""}</small>
+                        </td>
+                      )}
+                      <td>
+                        <div className="profileCell">
+                          {profile.photoUrl && profile.photoUrl !== "Not Available" ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="profileAvatarPlaceholder">{(profile.name || "?").charAt(0).toUpperCase()}</span>}
+                          <div className="profileText">
+                            <span className="profileNameText">{profile.name || "Not Available"}</span>
+                            <span>{profile.designation || profile.headline || "Not Available"}</span>
+                            {profile.profileUrl && profile.profileUrl !== "Not Available" && <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="profileSocial"><Linkedin size={13}/></a>}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="companyCell">
+                          <span className="companyMark">{(profile.company || "C").charAt(0).toUpperCase()}</span>
+                          <div><strong>{profile.company || "Not Available"}</strong><span><MapPin size={12}/>{[profile.city, profile.country].filter(c => c && c !== "Not Available").join(", ") || profile.location || "Not Available"}</span></div>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="contactCell">
+                          <span><Mail size={14}/><span>{profile.email || "Not Available"}</span></span>
+                          {profile.personalEmail && profile.personalEmail !== profile.email && <span className="secondaryContact"><Mail size={14}/><span>{profile.personalEmail}</span></span>}
+                          <span><Phone size={14}/><span>{profile.phone || "Not Available"}</span></span>
+                        </div>
+                      </td>
+                      {authUser.role !== "Admin" && <td className="assignedByCell"><strong>{profile.assignment?.assignedByName || "Not Available"}</strong><small>{profile.assignment?.assignedByRole || ""}</small></td>}
+                      <td>{profile.assignment?.assignedAt ? new Date(profile.assignment.assignedAt).toLocaleDateString() : "Not Available"}</td>
+                      <td>{profile.profileUrl && profile.profileUrl !== "Not Available" ? <a className="profileLink" href={profile.profileUrl} target="_blank" rel="noopener noreferrer">Open Profile ↗</a> : "Not Available"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
           <footer>ProfileDesk <span>•</span> React + Express</footer>
         </>
