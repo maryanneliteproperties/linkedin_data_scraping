@@ -316,7 +316,7 @@ async function confirmDelete() {
       </header>
 
       <section className="hero">
-        <div><p className="eyebrow">LINKEDIN PROFILE EXTRACTION</p><h1>LinkedIn Profiles</h1><p className="subtext">Sign in to save your own LinkedIn basic profile, or view records already stored in this app.</p></div>
+        <div><p className="eyebrow">LINKEDIN CONTACTS</p><h1>Lead List</h1><p className="subtext">Manage saved LinkedIn profiles and contact details.</p></div>
       </section>
 
       {/* <form className="extractPanel" onSubmit={extractProfile}>
@@ -353,7 +353,7 @@ async function confirmDelete() {
           </section>
 
       <section className="tablePanel">
-        <div className="tableToolbar"><div><h2>Profile records</h2><p>LinkedIn member data saved in the application</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
+        <div className="tableToolbar"><div><h2>Lead List</h2><p>{filtered.length} profiles</p></div><div className="toolbarActions"><div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
 
 {viewingProfile && (
   <div className="modalBackdrop" onClick={() => setViewingProfile(null)}>
