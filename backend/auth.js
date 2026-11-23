@@ -1,15 +1,13 @@
-import fs from "fs/promises";
-import path from "path";
 import crypto from "crypto";
+import { supabase } from "./supabase.js";
 
-export function setupAuth(app, dataDir, asText) {
-  const usersFile = path.join(dataDir, "users.json");
+export function setupAuth(app, _dataDir, asText) {
   const cookieName = "profiledesk_auth";
   const maxAge = 60 * 60 * 12;
   const sessions = new Map();
-  const pinPattern = new RegExp("^[0-9]{4,8}$");
-  const emailPattern = new RegExp("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
-  const usernamePattern = new RegExp("^[a-zA-Z0-9._-]{3,30}$");
+  const pinPattern = /^[0-9]{4,8}$/;
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const usernamePattern = /^[a-zA-Z0-9._-]{3,30}$/;
 
   function cookies(header = "") {
     return Object.fromEntries(header.split(";").map((part) => {
@@ -22,53 +20,23 @@ export function setupAuth(app, dataDir, asText) {
     return { salt, hash: crypto.scryptSync(String(pin), salt, 64).toString("hex") };
   }
   function verifyPin(pin, user) {
-    const candidate = crypto.scryptSync(String(pin), user.pinSalt, 64);
-    const stored = Buffer.from(user.pinHash, "hex");
-    return stored.length === candidate.length && crypto.timingSafeEqual(candidate, stored);
-  }
-  async function readUsers() {
     try {
-      const data = JSON.parse(await fs.readFile(usersFile, "utf8"));
-      const users = Array.isArray(data) ? data : [];
-      const usedUsernames = new Set();
-      let changed = false;
-
-      for (const user of users) {
-        let username = String(user.username || "").trim().toLowerCase();
-        if (!usernamePattern.test(username) || usedUsernames.has(username)) {
-          const emailPrefix = String(user.email || "user").split("@")[0].toLowerCase();
-          const base = emailPrefix.replace(/[^a-z0-9._-]/g, "").slice(0, 24);
-          const safeBase = base.length >= 3 ? base : (base + "user").slice(0, 24);
-          username = safeBase;
-          let suffix = 1;
-          while (usedUsernames.has(username)) {
-            const tail = String(suffix++);
-            username = safeBase.slice(0, 30 - tail.length) + tail;
-          }
-          user.username = username;
-          changed = true;
-        } else if (user.username !== username) {
-          user.username = username;
-          changed = true;
-        }
-        usedUsernames.add(username);
-      }
-
-      if (changed) await writeUsers(users);
-      return users;
-    } catch (error) {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    }
+      const candidate = crypto.scryptSync(String(pin), user.pin_salt, 64);
+      const stored = Buffer.from(user.pin_hash, "hex");
+      return stored.length === candidate.length && crypto.timingSafeEqual(candidate, stored);
+    } catch { return false; }
   }
-  async function writeUsers(users) {
-    await fs.mkdir(dataDir, { recursive: true });
-    const temp = usersFile + ".tmp";
-    await fs.writeFile(temp, JSON.stringify(users, null, 2), { mode: 0o600 });
-    await fs.rename(temp, usersFile);
+  const fromDb = (row) => ({
+    id: row.id, username: row.username || "", name: row.name, email: row.email,
+    role: row.role, pinSalt: row.pin_salt, pinHash: row.pin_hash,
+    createdAt: row.created_at, createdBy: row.created_by, updatedAt: row.updated_at
+  });
+  const toSafeUser = (user) => ({ id: user.id, username: user.username || "", name: user.name, email: user.email, role: user.role });
+  async function getUsers() {
+    const { data, error } = await supabase.from("users").select("*");
+    if (error) throw error;
+    return (data || []).map(fromDb);
   }
-  const safeUser = (user) => ({ id: user.id, username: user.username || "", name: user.name, email: user.email, role: user.role });
-
   async function requireAuth(req, res, next) {
     try {
       const token = cookies(req.headers.cookie)[cookieName];
@@ -77,9 +45,10 @@ export function setupAuth(app, dataDir, asText) {
         if (token) sessions.delete(token);
         return res.status(401).json({ message: "Please log in to continue." });
       }
-      const user = (await readUsers()).find((item) => item.id === session.userId);
-      if (!user) return res.status(401).json({ message: "Session is no longer valid. Please log in again." });
-      req.authUser = user;
+      const { data, error } = await supabase.from("users").select("*").eq("id", session.userId).maybeSingle();
+      if (error) throw error;
+      if (!data) return res.status(401).json({ message: "Session is no longer valid. Please log in again." });
+      req.authUser = fromDb(data);
       next();
     } catch (error) { next(error); }
   }
@@ -88,41 +57,49 @@ export function setupAuth(app, dataDir, asText) {
     next();
   }
   async function provisionInitialAdmin() {
-    const users = await readUsers();
-    if (users.length) return;
+    const { count, error } = await supabase.from("users").select("id", { count: "exact", head: true });
+    if (error) throw error;
+    if (count > 0) return;
     const name = asText(process.env.ADMIN_NAME);
     const email = asText(process.env.ADMIN_EMAIL).toLowerCase();
     const pin = asText(process.env.ADMIN_PIN);
-    if (!name || !email || !pinPattern.test(pin)) {
+    if (!name || !emailPattern.test(email) || !pinPattern.test(pin)) {
       console.warn("[Auth] No users found. Set ADMIN_NAME, ADMIN_EMAIL and a 4-8 digit ADMIN_PIN in backend/.env.");
       return;
     }
     const credentials = hashPin(pin);
-    const usernameBase = email.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 24) || "adminuser";
-    users.push({ id: crypto.randomUUID(), username: usernameBase.length >= 3 ? usernameBase : (usernameBase + "user").slice(0, 30), name, email, role: "Admin", pinSalt: credentials.salt, pinHash: credentials.hash, createdAt: new Date().toISOString() });
-    await writeUsers(users);
-    console.log("[Auth] Initial Admin account provisioned.");
+    const { error: insertError } = await supabase.from("users").insert({
+      name, email, role: "Admin", username: null,
+      pin_salt: credentials.salt, pin_hash: credentials.hash
+    });
+    if (insertError) throw insertError;
+    console.log("[Auth] Initial Admin account provisioned in Supabase.");
   }
 
   app.post("/api/auth/login", async (req, res, next) => {
     try {
-      const username = asText(req.body?.username).toLowerCase();
       const role = asText(req.body?.role);
+      const username = asText(req.body?.username).toLowerCase();
       const pin = asText(req.body?.pin);
-      if (!usernamePattern.test(username) || !["Admin", "Sub Admin", "Employee"].includes(role) || !pinPattern.test(pin)) {
-        return res.status(400).json({ message: "Enter a valid user name, select a role and enter your 4-8 digit PIN." });
+      if (!["Admin", "Sub Admin", "Employee"].includes(role) || !pinPattern.test(pin) ||
+          (role !== "Admin" && !usernamePattern.test(username))) {
+        return res.status(400).json({ message: role === "Admin"
+          ? "Select Admin and enter your 4-8 digit PIN."
+          : "Enter a valid user name, select a role and enter your 4-8 digit PIN." });
       }
-      const user = (await readUsers()).find((item) => item.username === username && item.role === role && verifyPin(pin, item));
-      if (!user) return res.status(401).json({ message: "Incorrect user name, role or PIN." });
+      const users = await getUsers();
+      const user = users.find((item) => item.role === role &&
+        (role === "Admin" || item.username?.toLowerCase() === username) && verifyPin(pin, item));
+      if (!user) return res.status(401).json({ message: role === "Admin" ? "Incorrect Admin PIN." : "Incorrect user name, role or PIN." });
       const token = crypto.randomBytes(32).toString("hex");
       sessions.set(token, { userId: user.id, expiresAt: Date.now() + maxAge * 1000 });
       const secure = process.env.NODE_ENV === "production";
       res.setHeader("Set-Cookie", cookieName + "=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=" + maxAge + "; SameSite=" + (secure ? "None; Secure" : "Lax"));
-      res.json({ authenticated: true, user: safeUser(user) });
+      res.json({ authenticated: true, user: toSafeUser(user) });
     } catch (error) { next(error); }
   });
 
-  app.get("/api/auth/me", requireAuth, (req, res) => res.json({ authenticated: true, user: safeUser(req.authUser) }));
+  app.get("/api/auth/me", requireAuth, (req, res) => res.json({ authenticated: true, user: toSafeUser(req.authUser) }));
   app.post("/api/auth/logout", (req, res) => {
     const token = cookies(req.headers.cookie)[cookieName];
     if (token) sessions.delete(token);
@@ -132,7 +109,7 @@ export function setupAuth(app, dataDir, asText) {
   });
 
   app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res, next) => {
-    try { res.json((await readUsers()).map(safeUser)); }
+    try { res.json((await getUsers()).map(toSafeUser)); }
     catch (error) { next(error); }
   });
 
@@ -146,26 +123,29 @@ export function setupAuth(app, dataDir, asText) {
       if (!usernamePattern.test(username) || !name || !emailPattern.test(email) || !pinPattern.test(pin) || !["Sub Admin", "Employee"].includes(role)) {
         return res.status(400).json({ message: "Enter a valid user name, name, email, 4-8 digit PIN and select Sub Admin or Employee." });
       }
-      const users = await readUsers();
-      if (users.some((item) => item.username === username)) return res.status(409).json({ message: "This user name is already taken. Choose another user name." });
+      const users = await getUsers();
+      if (users.some((item) => item.username?.toLowerCase() === username)) return res.status(409).json({ message: "This user name is already taken. Choose another user name." });
       if (users.some((item) => item.email.toLowerCase() === email)) return res.status(409).json({ message: "An account with this email already exists." });
       if (users.some((item) => item.role === role && verifyPin(pin, item))) return res.status(409).json({ message: "This PIN is already assigned to another user with the same role. Choose a unique PIN." });
       const credentials = hashPin(pin);
-      const user = { id: crypto.randomUUID(), username, name, email, role, pinSalt: credentials.salt, pinHash: credentials.hash, createdAt: new Date().toISOString(), createdBy: req.authUser.id };
-      users.push(user);
-      await writeUsers(users);
-      res.status(201).json({ success: true, user: safeUser(user) });
+      const { data, error } = await supabase.from("users").insert({
+        username, name, email, role, pin_salt: credentials.salt, pin_hash: credentials.hash, created_by: req.authUser.id
+      }).select("*").single();
+      if (error) {
+        if (error.code === "23505") return res.status(409).json({ message: "User name or email already exists." });
+        throw error;
+      }
+      res.status(201).json({ success: true, user: toSafeUser(fromDb(data)) });
     } catch (error) { next(error); }
   });
 
   app.put("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res, next) => {
     try {
-      const users = await readUsers();
-      const index = users.findIndex((item) => item.id === req.params.id);
-      if (index < 0) return res.status(404).json({ message: "Account not found." });
-      const existing = users[index];
+      const { data: existingRow, error: fetchError } = await supabase.from("users").select("*").eq("id", req.params.id).maybeSingle();
+      if (fetchError) throw fetchError;
+      if (!existingRow) return res.status(404).json({ message: "Account not found." });
+      const existing = fromDb(existingRow);
       if (existing.role === "Admin") return res.status(403).json({ message: "Admin account cannot be edited here." });
-
       const username = asText(req.body?.username).toLowerCase();
       const name = asText(req.body?.name);
       const email = asText(req.body?.email).toLowerCase();
@@ -174,45 +154,37 @@ export function setupAuth(app, dataDir, asText) {
       if (!usernamePattern.test(username) || !name || !emailPattern.test(email) || !["Sub Admin", "Employee"].includes(role)) {
         return res.status(400).json({ message: "Enter a valid user name, name, email and select Sub Admin or Employee." });
       }
-      if (users.some((item) => item.id !== existing.id && item.username === username)) {
-        return res.status(409).json({ message: "This user name is already taken. Choose another user name." });
-      }
-      if (users.some((item) => item.id !== existing.id && item.email.toLowerCase() === email)) {
-        return res.status(409).json({ message: "An account with this email already exists." });
-      }
-      if (role !== existing.role && !pin) {
-        return res.status(400).json({ message: "Enter a new PIN when changing the account role." });
-      }
-      if (pin && !pinPattern.test(pin)) {
-        return res.status(400).json({ message: "PIN must contain 4-8 digits." });
-      }
-      if (pin && users.some((item) => item.id !== existing.id && item.role === role && verifyPin(pin, item))) {
-        return res.status(409).json({ message: "This PIN is already assigned to another user with the same role. Choose a unique PIN." });
-      }
-
-      const updated = { ...existing, username, name, email, role, updatedAt: new Date().toISOString() };
+      const users = await getUsers();
+      if (users.some((item) => item.id !== existing.id && item.username?.toLowerCase() === username)) return res.status(409).json({ message: "This user name is already taken. Choose another user name." });
+      if (users.some((item) => item.id !== existing.id && item.email.toLowerCase() === email)) return res.status(409).json({ message: "An account with this email already exists." });
+      if (role !== existing.role && !pin) return res.status(400).json({ message: "Enter a new PIN when changing the account role." });
+      if (pin && !pinPattern.test(pin)) return res.status(400).json({ message: "PIN must contain 4-8 digits." });
+      if (pin && users.some((item) => item.id !== existing.id && item.role === role && verifyPin(pin, item))) return res.status(409).json({ message: "This PIN is already assigned to another user with the same role. Choose a unique PIN." });
+      const updates = { username, name, email, role, updated_at: new Date().toISOString() };
       if (pin) {
         const credentials = hashPin(pin);
-        updated.pinSalt = credentials.salt;
-        updated.pinHash = credentials.hash;
+        updates.pin_salt = credentials.salt;
+        updates.pin_hash = credentials.hash;
       }
-      users[index] = updated;
-      await writeUsers(users);
-      res.json({ success: true, user: safeUser(updated) });
+      const { data, error } = await supabase.from("users").update(updates).eq("id", existing.id).select("*").single();
+      if (error) {
+        if (error.code === "23505") return res.status(409).json({ message: "User name or email already exists." });
+        throw error;
+      }
+      res.json({ success: true, user: toSafeUser(fromDb(data)) });
     } catch (error) { next(error); }
   });
 
   app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res, next) => {
     try {
       if (req.params.id === req.authUser.id) return res.status(400).json({ message: "You cannot delete your own account." });
-      const users = await readUsers();
-      const target = users.find((item) => item.id === req.params.id);
+      const { data: target, error: fetchError } = await supabase.from("users").select("id,role").eq("id", req.params.id).maybeSingle();
+      if (fetchError) throw fetchError;
       if (!target) return res.status(404).json({ message: "Account not found." });
       if (target.role === "Admin") return res.status(403).json({ message: "Admin account cannot be deleted here." });
-      await writeUsers(users.filter((item) => item.id !== target.id));
-      for (const [token, session] of sessions.entries()) {
-        if (session.userId === target.id) sessions.delete(token);
-      }
+      const { error } = await supabase.from("users").delete().eq("id", target.id);
+      if (error) throw error;
+      for (const [token, session] of sessions.entries()) if (session.userId === target.id) sessions.delete(token);
       res.json({ success: true, message: "Account deleted successfully." });
     } catch (error) { next(error); }
   });
