@@ -672,7 +672,7 @@ body{background:#f5f6f8}
 .employeeAccountHero{padding-top:28px}
 .employeeAccountPanel{margin-bottom:18px}
 .employeeAccountPanel .accountPanelHeading p{margin-bottom:16px}
-.employeeAccountPanel .accountCreateForm{grid-template-columns:repeat(4,minmax(130px,1fr))}
+.employeeAccountPanel .accountCreateForm{grid-template-columns:repeat(4,minmax(130px,1fr)) auto}
 .accountFormActions{display:flex;align-items:center;gap:8px}
 .accountFormActions .primaryBtn,.accountFormActions .secondaryBtn{min-height:42px}
 .accountTableWrap{border:1px solid #edf0f4;border-radius:9px}
@@ -690,5 +690,5 @@ body{background:#f5f6f8}
 .confirmDeleteBtn{border:1px solid #b42318;border-radius:7px;background:#d92d20;color:#fff;padding:9px 14px;font:600 12px Inter;cursor:pointer}
 .confirmDeleteBtn:hover{background:#b42318}
 .confirmDeleteBtn:disabled{opacity:.6;cursor:wait}
-@media(max-width:1050px){.employeeAccountPanel .accountCreateForm{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1050px){.employeeAccountPanel .accountCreateForm{grid-template-columns:repeat(2,minmax(0,1fr))}.employeeAccountPanel .accountFormActions{grid-column:1/-1}}
 @media(max-width:560px){.employeeAccountPanel .accountCreateForm{grid-template-columns:1fr}.accountFormActions{flex-wrap:wrap}.employeeAccountPanel{padding:15px}.accountTableWrap{margin:0 -2px}}
