@@ -605,7 +605,16 @@ app.put("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
       return res.status(404).json({ message: "Profile not found." });
     }
 
-    const updated = normalizeProfile({ ...profiles[index], ...req.body, assignment: profiles[index].assignment || null, assignmentHistory: profiles[index].assignmentHistory || [] }, profiles[index].id);
+    const currentProfile = profiles[index];
+    const assignment = currentProfile.assignment || null;
+    if (req.authUser.role === "Employee" && assignment) {
+      return res.status(403).json({ message: "Employees cannot edit assigned tasks." });
+    }
+    if (req.authUser.role === "Sub Admin" && assignment?.assignedByRole === "Admin") {
+      return res.status(403).json({ message: "Sub Admin cannot edit tasks assigned by Admin." });
+    }
+
+    const updated = normalizeProfile({ ...currentProfile, ...req.body, assignment: currentProfile.assignment || null, assignmentHistory: currentProfile.assignmentHistory || [] }, currentProfile.id);
     const validationError = validateProfile(updated);
     if (validationError) {
       return res.status(400).json({ message: validationError });
@@ -630,6 +639,19 @@ app.put("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
 app.delete("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
   try {
     const profiles = await readProfiles();
+    const profileToDelete = profiles.find((item) => String(item.id) === req.params.id);
+    if (!profileToDelete) {
+      return res.status(404).json({ message: "Profile not found." });
+    }
+
+    const assignment = profileToDelete.assignment || null;
+    if (req.authUser.role === "Employee" && assignment) {
+      return res.status(403).json({ message: "Employees cannot delete assigned tasks." });
+    }
+    if (req.authUser.role === "Sub Admin" && assignment?.assignedByRole === "Admin") {
+      return res.status(403).json({ message: "Sub Admin cannot delete tasks assigned by Admin." });
+    }
+
     const filtered = profiles.filter((item) => String(item.id) !== req.params.id);
 
     if (filtered.length === profiles.length) {
