@@ -406,3 +406,103 @@ td:nth-child(1) {
   background: #dcfce7;
   border-color: #86efac;
 }
+
+/* SignalHire-inspired lead list workspace */
+:root{color:#172033;background:#f5f6f8}
+body{background:#f5f6f8}
+.page{position:relative;width:100%;max-width:none;min-height:100vh;margin:0;padding:0 28px 26px 88px;background:#f5f6f8}
+.appSidebar{position:fixed;z-index:15;left:0;top:0;bottom:0;width:64px;background:#fff;border-right:1px solid #e7ebf0;display:flex;flex-direction:column;align-items:center}
+.sidebarBrand{height:62px;width:100%;display:grid;place-items:center;border-bottom:1px solid #edf0f4;color:#4b5563;font-size:22px;font-weight:800;letter-spacing:-1px}
+.appSidebar nav{display:flex;flex-direction:column;align-items:center;gap:8px;padding:17px 0;flex:1;width:100%}
+.sidebarNavItem{width:42px;height:42px;border:0;border-radius:10px;background:transparent;color:#667085;display:grid;place-items:center;cursor:pointer}
+.sidebarNavItem:hover,.sidebarNavItem.active{background:#edf5ff;color:#2780d8}
+.sidebarBottom{width:100%;height:58px;border-top:1px solid #edf0f4;display:grid;place-items:center;color:#2780d8}
+.topbar{min-height:72px;border-bottom:1px solid #e8ebef}
+.brandIcon{background:#2479c8;border-radius:9px}
+.hero{padding:25px 0 20px}
+.hero h1{font-size:25px;letter-spacing:-.5px;color:#172033}
+.eyebrow{color:#438bd0}
+.subtext{font-size:12px}
+.leadWorkspace{display:grid;grid-template-columns:306px minmax(0,1fr);align-items:start;gap:16px}
+.filterPanel{position:relative;min-height:calc(100vh - 170px);background:#fff;border:1px solid #e3e8ef;border-radius:15px;padding:16px 13px 18px;display:flex;flex-direction:column;gap:13px}
+.filterPanelHeading{display:flex;align-items:center;justify-content:space-between;padding:2px 1px 5px}
+.filterPanelHeading>div{display:flex;align-items:center;gap:8px;color:#26364a;font-size:14px}
+.filterPanelHeading button{border:0;background:transparent;color:#438bd0;font:600 11px Inter;cursor:pointer}
+.filterFields{display:flex;flex-direction:column;gap:10px}
+.filterFields label{display:block;min-width:0}
+.filterFields label>span{display:none}
+.filterFields input,.filterFields select{width:100%;height:43px;border:1px solid #6aa4ed;border-radius:12px;background:#fff;padding:0 12px;color:#344054;font:500 12px Inter;outline:none}
+.filterFields input::placeholder{color:#91b4df;opacity:1}
+.filterFields input:focus,.filterFields select:focus{border-color:#3187df;box-shadow:0 0 0 3px rgba(49,135,223,.1)}
+.filterSelects{border-top:1px solid #eef1f5;padding-top:13px;margin-top:2px}
+.filterSelects label>span{display:block;margin:0 0 6px 3px;color:#7b8796;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.45px}
+.filterFields select{appearance:auto;color:#8aadd5}
+.filterSearchBtn{height:43px;width:100%;margin-top:auto;border:0;border-radius:12px;background:#4b91d0;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font:700 12px Inter;cursor:pointer}
+.filterSearchBtn:hover{background:#347fc3}
+.resultsColumn{min-width:0}
+.resultsColumn .stats{margin-bottom:12px;gap:10px}
+.resultsColumn .statCard{min-width:145px;padding:10px 13px;border-radius:10px}
+.resultsColumn .statCard strong{font-size:17px}
+.resultsColumn .statIcon{width:30px;height:30px}
+.tablePanel{border:1px solid #dce5ef;border-radius:15px;overflow:hidden}
+.tableToolbar{padding:15px 16px;border-bottom:1px solid #e5ebf2}
+.tableToolbar h2{font-size:15px;color:#1d2a3a}
+.tableToolbar p{font-size:11px}
+.searchBox{height:37px;border:1px solid #d6e1ed;border-radius:9px;background:#fff}
+.searchBox input{font-size:11px}
+.tableWrap{overflow-x:auto;background:#fff}
+.leadTable{width:100%;min-width:760px;table-layout:fixed;border-collapse:collapse}
+.leadTable .selectCol{width:42px}
+.leadTable .profileCol{width:28%}
+.leadTable .companyCol{width:23%}
+.leadTable .contactCol{width:29%}
+.leadTable .actionsCol{width:150px}
+.leadTable th{height:43px;padding:10px 11px;background:#fff;color:#7f8a99;border-top:0;border-bottom:1px solid #dce8f5;font-size:10px;letter-spacing:.45px}
+.leadTable td{height:86px;padding:11px;border-bottom:1px solid #dce8f5;background:#fff;color:#4d5969;font-size:12px;vertical-align:middle;white-space:normal}
+.leadTable tbody tr:hover td{background:#fbfdff}
+.leadTable .checkCell{text-align:center;padding:8px 5px}
+.leadTable input[type="checkbox"]{width:18px;height:18px;accent-color:#3988d8;cursor:pointer}
+.profileCell{display:flex;align-items:center;gap:10px;min-width:0}
+.profileCell .profileAvatar,.profileCell .profileAvatarPlaceholder{flex:0 0 32px;width:32px;height:32px;min-width:32px;border-radius:7px}
+.profileAvatarPlaceholder{font-size:12px;font-weight:700}
+.profileText{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+.profileName{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;padding:0;background:none;color:#1e293b;font:700 12px Inter;text-align:left;cursor:pointer}
+.profileText>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#7b8795;font-size:11px;line-height:1.35}
+.profileSocial{display:inline-flex;color:#687789}
+.companyCell{display:flex;align-items:center;gap:9px;min-width:0}
+.companyMark{width:27px;height:27px;flex:0 0 27px;border-radius:7px;background:#eef1f4;color:#475467;display:grid;place-items:center;font-size:12px;font-weight:800}
+.companyCell>div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.companyCell strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#243247;font-size:12px}
+.companyCell>div>span{display:flex;align-items:center;gap:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8793a2;font-size:10px}
+.contactCell{display:flex;flex-direction:column;gap:6px;min-width:0}
+.contactCell>span{display:flex;align-items:center;gap:7px;min-width:0;color:#3486d1}
+.contactCell>span>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#344054;font-size:11px}
+.contactCell .secondaryContact{color:#8793a2}
+.leadTable .actionHead{text-align:center}
+.leadTable .actionButtons{justify-content:center;gap:5px;flex-wrap:nowrap}
+.leadTable .viewBtn,.leadTable .editBtn,.leadTable .deleteBtn{padding:6px 8px;font-size:10px}
+.leadTable .deleteBtn{display:grid;place-items:center;width:29px;height:28px;padding:0}
+.empty{padding:35px!important;text-align:center!important;color:#8a94a3!important}
+.paginationContainer{padding:13px 16px;border-top:1px solid #e2eaf2;background:#fff}
+.paginationInfo{font-size:11px}
+.paginationControls{gap:8px}
+.itemsPerPage{font-size:11px}
+.itemsPerPage select{padding:6px 8px;border-radius:7px;font-size:11px}
+.pageBtn{padding:7px 10px;border-radius:7px;font-size:11px}
+.currentPage{font-size:11px}
+.tableFooter{padding:10px 16px;font-size:10px;background:#fbfcfe}
+.page footer{padding:18px 0 0}
+@media(max-width:1050px){.leadWorkspace{grid-template-columns:260px minmax(0,1fr)}.leadTable{min-width:760px}}
+@media(max-width:760px){
+  .page{padding:0 12px 20px 76px}
+  .leadWorkspace{grid-template-columns:1fr}
+  .filterPanel{min-height:0;padding:13px}
+  .filterFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .filterSearchBtn{margin-top:0}
+  .resultsColumn .stats{display:flex}
+  .tableToolbar{align-items:stretch;flex-direction:column}
+  .toolbarActions{width:100%}
+  .searchBox{width:auto;flex:1}
+  .paginationControls{flex-wrap:wrap}
+}
+@media(max-width:480px){.filterFields{grid-template-columns:1fr}.resultsColumn .stats{gap:7px}.resultsColumn .statCard{padding:9px;min-width:0;flex:1}}
