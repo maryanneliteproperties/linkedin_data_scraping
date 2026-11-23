@@ -5,3 +5,7 @@ dist/
 
 # Local user accounts (PIN hashes and account metadata)
 backend/data/users.json
+
+# Local legacy data files (keep backups until Supabase migration is verified)
+backend/data/profiles.json
+backend/data/profiles-conflict-backup.json
