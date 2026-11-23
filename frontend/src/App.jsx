@@ -1076,11 +1076,11 @@ async function confirmDelete() {
             <div className="accountPanelHeading"><div><h2>Employee List</h2><p>{adminUsers.filter((user) => user.role !== "Admin").length} accounts</p></div></div>
             <div className="tableWrap accountTableWrap">
               <table className="accountTable">
-                <thead><tr><th>User Name</th><th>Name</th><th>Email</th><th>PIN</th><th>Role</th><th>Action</th></tr></thead>
+                <thead><tr><th>Name</th><th>User Name</th><th>Email</th><th>PIN</th><th>Role</th><th>Action</th></tr></thead>
                 <tbody>
                   {adminUsers.filter((user) => user.role !== "Admin").length === 0 ? <tr><td colSpan="6" className="empty">No employee accounts created yet.</td></tr> : adminUsers.filter((user) => user.role !== "Admin").map((user) => (
                     <tr key={user.id}>
-                      <td><strong>{user.username}</strong></td><td><strong>{user.name}</strong></td><td>{user.email}</td><td><span className="maskedPin" aria-label="PIN hidden for security">••••••</span></td><td><span className="accountRole">{user.role}</span></td>
+                      <td><strong>{user.name || "Not Available"}</strong></td><td><strong title={user.username || ""} style={{ whiteSpace: "nowrap" }}>{user.username || "Not Available"}</strong></td><td>{user.email}</td><td><span className="maskedPin" aria-label="PIN hidden for security">••••••</span></td><td><span className="accountRole">{user.role}</span></td>
                       <td><div className="accountActions"><button type="button" className="editBtn" onClick={() => startEditAccount(user)}>Edit</button><button type="button" className="deleteBtn" onClick={() => setAccountToDelete(user)}>Delete</button></div></td>
                     </tr>
                   ))}
