@@ -1,11 +1,9 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { setupAuth } from "./auth.js";
+import { supabase } from "./supabase.js";
 import {
   searchSignalHire,
   getSignalHireCredits,
@@ -18,9 +16,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const DATA_FILE = path.join(__dirname, "data", "profiles.json");
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || "http://localhost:5000/auth/linkedin/callback";
 const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || "";
@@ -47,7 +43,7 @@ app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 // Helper utilities
 const asText = (value) => (typeof value === "string" ? value.trim() : "");
 const asRecords = (value) => (Array.isArray(value) ? value.filter((i) => i && typeof i === "object") : []);
-const auth = setupAuth(app, path.join(__dirname, "data"), asText);
+const auth = setupAuth(app, null, asText);
 
 /**
  * Standardize and normalize profile schema across all sources (SignalHire, Extension, CRM)
@@ -323,28 +319,36 @@ function mergeExistingProfile(existing, incoming) {
 }
 
 /**
- * File I/O for database persistence
+ * Supabase persistence for profile records.
+ * Profile payloads remain JSONB so the existing API shape is unchanged.
  */
 async function readProfiles() {
-  try {
-    const content = await fs.readFile(DATA_FILE, "utf8");
-    const parsed = JSON.parse(content);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      await writeProfiles([]);
-      return [];
-    }
-    console.error("[Database] Read error:", error.message);
-    return [];
-  }
+  const { data, error } = await supabase.from("profiles").select("data").order("id", { ascending: false });
+  if (error) throw error;
+  return (data || []).map((row) => row.data).filter((item) => item && typeof item === "object");
 }
 
 async function writeProfiles(profiles) {
-  const tempFile = `${DATA_FILE}.tmp`;
-  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  await fs.writeFile(tempFile, JSON.stringify(profiles, null, 2), "utf8");
-  await fs.rename(tempFile, DATA_FILE);
+  const rows = profiles.map((profile) => ({
+    id: Number(profile.id),
+    data: profile,
+    created_at: profile.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }));
+  if (rows.some((row) => !Number.isSafeInteger(row.id))) {
+    throw new Error("Profile ID must be a safe integer before saving to Supabase.");
+  }
+
+  if (rows.length) {
+    const { error } = await supabase.from("profiles").upsert(rows, { onConflict: "id" });
+    if (error) throw error;
+    const ids = rows.map((row) => row.id);
+    const { error: deleteError } = await supabase.from("profiles").delete().not("id", "in", "(" + ids.join(",") + ")");
+    if (deleteError) throw deleteError;
+  } else {
+    const { error } = await supabase.from("profiles").delete().gte("id", 0);
+    if (error) throw error;
+  }
 }
 
 // ----------------------------------------------------
