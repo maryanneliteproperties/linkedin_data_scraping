@@ -14,6 +14,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [authUser, setAuthUser] = useState(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [loginRole, setLoginRole] = useState("Admin");
   const [loginPin, setLoginPin] = useState("");
@@ -577,22 +578,35 @@ async function confirmDelete() {
         <div className="sidebarBottom"><Linkedin size={19}/></div>
       </aside>
       <header className="topbar">
-        <div className="brand"><span className="brandIcon"><Linkedin size={22} /></span><div><strong>ProfileDesk</strong><small>LinkedIn data viewer</small></div></div>
-        {/* <div className="authActions">
-          {authUser ? (
-            <>
-              <span className="signedInUser"><UserRound size={15}/><span>{authUser.name || authUser.email || "LinkedIn member"}</span></span>
-              <div className="saveProfileControls">
-                <input aria-label="Your LinkedIn profile URL" type="url" value={linkedinProfileUrl} onChange={(event) => setLinkedinProfileUrl(event.target.value)} placeholder="Paste your LinkedIn profile URL (optional)" />
-                <button className="secondaryBtn" onClick={saveMyProfile} disabled={savingMyProfile}><Save size={15}/>{savingMyProfile ? "Saving..." : "Save My Profile"}</button>
-              </div>
-              <button className="iconBtn" onClick={logout} title="Sign out" type="button"><LogOut size={16}/></button>
-            </>
-          ) : (
-            <button className="primaryBtn" type="button" onClick={() => { window.location.href = `${API_ORIGIN}/auth/linkedin`; }} disabled={authLoading}><LogIn size={15}/>{authLoading ? "Checking..." : "Sign in with LinkedIn"}</button>
+        <div className="brand">
+          <span className="brandIcon"><Linkedin size={21} /></span>
+          <div><strong>ProfileDesk</strong><small>LinkedIn data viewer</small></div>
+        </div>
+        <div className="profileMenu" onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setProfileMenuOpen(false);
+        }}>
+          <button
+            type="button"
+            className="profileAvatarButton"
+            aria-label="Open account menu"
+            aria-haspopup="true"
+            aria-expanded={profileMenuOpen}
+            onClick={() => setProfileMenuOpen((open) => !open)}
+          >
+            <span className="headerAvatar">{(authUser.name || authUser.email || "U").trim().charAt(0).toUpperCase()}</span>
+            <ChevronDown size={15} />
+          </button>
+          {profileMenuOpen && (
+            <div className="profileDropdown" role="menu">
+              <div className="profileDropdownName">{authUser.name || "User"}</div>
+              <div className="profileDropdownRole">{authUser.role}</div>
+              <div className="profileDropdownDivider" />
+              <button type="button" className="profileDropdownLogout" role="menuitem" onClick={logout}>
+                <LogOut size={15} /> Logout
+              </button>
+            </div>
           )}
-          <span className="apiStatus"><i /> Backend API</span>
-        </div> */}
+        </div>
       </header>
 
       {activePage === "leads" ? (
@@ -600,10 +614,6 @@ async function confirmDelete() {
       <section className="hero">
         <div><p className="eyebrow">LINKEDIN CONTACTS</p><h1>Lead List</h1><p className="subtext">Manage saved LinkedIn profiles and contact details.</p></div>
       </section>
-      <div className="sessionBar">
-        <span>{authUser.name} · {authUser.role}</span>
-        <button type="button" className="secondaryBtn" onClick={logout}><LogOut size={15}/> Logout</button>
-      </div>
       {/* <form className="extractPanel" onSubmit={extractProfile}>
         <div className="extractHeading"><div><h2>Extract LinkedIn Profile</h2><p>Other members' profile extraction requires separate LinkedIn-approved API access.</p></div><span className="extractIcon"><DownloadCloud size={20}/></span></div>
         <div className="extractControls">
@@ -1042,10 +1052,6 @@ async function confirmDelete() {
         </>
       ) : (
         <>
-          <div className="sessionBar">
-            <span>{authUser.name} · {authUser.role}</span>
-            <button type="button" className="secondaryBtn" onClick={logout}><LogOut size={15}/> Logout</button>
-          </div>
           <section className="hero employeeAccountHero">
             <div><p className="eyebrow">ACCOUNT MANAGEMENT</p><h1>Employee Account</h1><p className="subtext">Create and manage Sub Admin and Employee logins.</p></div>
           </section>
