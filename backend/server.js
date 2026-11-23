@@ -5,6 +5,7 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
+import { setupAuth } from "./auth.js";
 import {
   searchSignalHire,
   getSignalHireCredits,
@@ -46,6 +47,7 @@ app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 // Helper utilities
 const asText = (value) => (typeof value === "string" ? value.trim() : "");
 const asRecords = (value) => (Array.isArray(value) ? value.filter((i) => i && typeof i === "object") : []);
+const auth = setupAuth(app, path.join(__dirname, "data"), asText);
 
 /**
  * Standardize and normalize profile schema across all sources (SignalHire, Extension, CRM)
@@ -431,7 +433,7 @@ app.get(["/api/signalhire/credits", "/api/profiles/signalhire-credits"], async (
  * GET /api/profiles
  * Retrieve profiles with search and sorting
  */
-app.get("/api/profiles", async (req, res, next) => {
+app.get("/api/profiles", auth.requireAuth, async (req, res, next) => {
   try {
     const profiles = await readProfiles();
     const query = asText(req.query.search).toLowerCase();
@@ -464,7 +466,7 @@ app.get("/api/profiles", async (req, res, next) => {
 /**
  * GET /api/profiles/:id
  */
-app.get("/api/profiles/:id", async (req, res, next) => {
+app.get("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
   try {
     const profiles = await readProfiles();
     const profile = profiles.find((item) => String(item.id) === req.params.id);
@@ -523,7 +525,7 @@ app.post("/api/profiles", async (req, res, next) => {
 /**
  * PUT /api/profiles/:id
  */
-app.put("/api/profiles/:id", async (req, res, next) => {
+app.put("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
   try {
     const profiles = await readProfiles();
     const index = profiles.findIndex((item) => String(item.id) === req.params.id);
@@ -554,7 +556,7 @@ app.put("/api/profiles/:id", async (req, res, next) => {
 /**
  * DELETE /api/profiles/:id
  */
-app.delete("/api/profiles/:id", async (req, res, next) => {
+app.delete("/api/profiles/:id", auth.requireAuth, async (req, res, next) => {
   try {
     const profiles = await readProfiles();
     const filtered = profiles.filter((item) => String(item.id) !== req.params.id);
@@ -574,7 +576,7 @@ app.delete("/api/profiles/:id", async (req, res, next) => {
  * POST /api/profiles/import
  * Bulk import profiles
  */
-app.post("/api/profiles/import", async (req, res, next) => {
+app.post("/api/profiles/import", auth.requireAuth, auth.requireAdmin, async (req, res, next) => {
   try {
     const incomingList = Array.isArray(req.body)
       ? req.body
@@ -625,6 +627,6 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`API running at http://localhost:${PORT}`);
-});
+auth.provisionInitialAdmin()
+  .catch((error) => console.error("[Auth] Initial Admin provisioning failed:", error.message))
+  .finally(() => app.listen(PORT, () => console.log("API running at http://localhost:" + PORT)));
