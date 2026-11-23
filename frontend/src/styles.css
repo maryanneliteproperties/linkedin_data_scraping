@@ -672,11 +672,11 @@ body{background:#f5f6f8}
 .employeeAccountHero{padding-top:28px}
 .employeeAccountPanel{margin-bottom:18px}
 .employeeAccountPanel .accountPanelHeading p{margin-bottom:16px}
-.employeeAccountPanel .accountCreateForm{grid-template-columns:repeat(4,minmax(130px,1fr)) auto}
+.employeeAccountPanel .accountCreateForm{grid-template-columns:repeat(5,minmax(115px,1fr)) auto}
 .accountFormActions{display:flex;align-items:center;gap:8px}
 .accountFormActions .primaryBtn,.accountFormActions .secondaryBtn{min-height:42px}
 .accountTableWrap{border:1px solid #edf0f4;border-radius:9px}
-.accountTable{width:100%;min-width:700px;border-collapse:collapse;white-space:nowrap}
+.accountTable{width:100%;min-width:820px;border-collapse:collapse;white-space:nowrap}
 .accountTable th{height:43px;padding:11px 14px;background:#f8fafc;color:#7f8a99;border-bottom:1px solid #dce8f5;font-size:10px;letter-spacing:.45px;text-align:left}
 .accountTable td{height:58px;padding:11px 14px;border-bottom:1px solid #edf0f4;color:#475467;font-size:12px;vertical-align:middle}
 .accountTable tbody tr:last-child td{border-bottom:0}
