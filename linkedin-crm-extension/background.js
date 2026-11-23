@@ -153,7 +153,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ success: true, profile: data.profile || data });
       } catch (error) {
         console.error("[Background] Profile save failed:", error);
-        sendResponse({ success: false, error: error.message || "Profile save failed." });
+        sendResponse({ success: false, message: error.message || "Profile save failed.", error: error.message || "Profile save failed." });
       }
     })();
     return true;
