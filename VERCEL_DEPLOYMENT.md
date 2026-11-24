@@ -37,6 +37,10 @@ Do not add the Supabase secret, Admin PIN, or SignalHire key as `VITE_*` variabl
 
 The frontend uses the same-origin `/api` path by default. Leave `VITE_API_URL` unset for this single-domain deployment.
 
+## LinkedIn extension connection
+
+The extension now reads its backend URL from `linkedin-crm-extension/config.js`. After Vercel gives you the deployment URL, change `API_BASE` in that file to `https://your-project.vercel.app/api`, reload the unpacked extension in Chrome, and add the extension origin (`chrome-extension://YOUR_EXTENSION_ID`) to Vercel's `CORS_ORIGINS` environment variable. If you use a custom domain instead of `*.vercel.app`, add that exact API host to `host_permissions` in `linkedin-crm-extension/manifest.json` as well. The extension still defaults to `http://localhost:5000/api` for local development.
+
 ## Preview verification checklist
 
 After the first Preview deployment, verify these before promoting it to Production:
@@ -47,7 +51,7 @@ After the first Preview deployment, verify these before promoting it to Producti
 4. Open the profile list and verify existing profile records are visible.
 5. Open a profile, then test save/edit/delete only with a safe test record.
 6. Test a Sub Admin and Employee login, including their role restrictions.
-7. Test the browser extension against the Preview origin if it is part of this release.
+7. Configure `linkedin-crm-extension/config.js` with the Preview API URL, add the extension ID to `CORS_ORIGINS`, reload the extension, and test login, profile save, and SignalHire calls.
 8. Test SignalHire only if its key is configured.
 
 Do not delete the legacy JSON backup files until the Supabase data has been verified independently. Do not change the Production branch or merge into `main` until the Preview checks pass.
