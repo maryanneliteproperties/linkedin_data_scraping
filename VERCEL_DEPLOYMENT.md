@@ -28,7 +28,7 @@ Add these in Vercel Project Settings > Environment Variables. Apply them to Prev
 | `ADMIN_NAME` | Only if users table is empty | Initial Admin display name |
 | `ADMIN_EMAIL` | Only if users table is empty | Initial Admin email |
 | `ADMIN_PIN` | Only if users table is empty | Private 4-8 digit initial Admin PIN |
-| `FRONTEND_URL` | Yes | Exact deployed frontend origin, for example `https://your-project.vercel.app` |
+| `FRONTEND_URL` | Yes | Production frontend origin, for example `https://your-project.vercel.app` (Vercel Preview origins are also allowed automatically using `VERCEL_URL`). |
 | `CORS_ORIGINS` | If needed | Comma-separated extra allowed origins, such as a trusted browser-extension origin |
 | `SIGNALHIRE_API_KEY` | If using SignalHire | Existing SignalHire API key |
 | `COOKIE_CROSS_SITE` | Normally no | Leave unset for the same-origin deployment. Set to `true` only if the frontend and API are hosted on different sites and cross-site cookies are required. |
