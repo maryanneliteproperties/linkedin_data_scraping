@@ -204,7 +204,10 @@ export default function App() {
 
   const tabProfiles = useMemo(() => profiles.filter((profile) => {
     const assignment = profile.assignment;
-    if (authUser?.role === "Sub Admin") return leadTab === "admin" ? assignment?.assignedToId === authUser.id && assignment?.assignedByRole === "Admin" : profile.createdById === authUser.id;
+    if (authUser?.role === "Admin") return !assignment;
+    if (authUser?.role === "Sub Admin") return leadTab === "admin"
+      ? assignment?.assignedToId === authUser.id && assignment?.assignedByRole === "Admin"
+      : profile.createdById === authUser.id && !assignment;
     if (authUser?.role === "Employee") return assignment?.assignedToId === authUser.id && assignment?.assignedByRole === (leadTab === "admin" ? "Admin" : "Sub Admin");
     return true;
   }), [profiles, authUser, leadTab]);
@@ -277,13 +280,15 @@ export default function App() {
 
   const filteredAssignedTasks = useMemo(() => assignedTasks.filter((profile) => {
     const assignment = profile.assignment || {};
-    const assignedAt = assignment.assignedAt ? new Date(assignment.assignedAt) : null;
+    const adminAssignment = profile.adminAssignment || profile.assignmentHistory?.find((item) => item.assignedByRole === "Admin") || assignment;
+    const displayedAssignment = authUser?.role === "Admin" ? adminAssignment : assignment;
+    const assignedAt = displayedAssignment.assignedAt ? new Date(displayedAssignment.assignedAt) : null;
     const today = new Date();
     const isToday = assignedAt && assignedAt.getFullYear() === today.getFullYear() && assignedAt.getMonth() === today.getMonth() && assignedAt.getDate() === today.getDate();
-    return (taskAssignedToFilter === "all" || assignment.assignedToId === taskAssignedToFilter)
+    return (taskAssignedToFilter === "all" || displayedAssignment.assignedToId === taskAssignedToFilter)
       && (!taskDateFilter || (assignedAt && [assignedAt.getFullYear(), String(assignedAt.getMonth() + 1).padStart(2, "0"), String(assignedAt.getDate()).padStart(2, "0")].join("-") === taskDateFilter))
       && (!taskTodayOnly || isToday);
-  }), [assignedTasks, taskAssignedToFilter, taskDateFilter, taskTodayOnly]);
+  }), [assignedTasks, authUser, taskAssignedToFilter, taskDateFilter, taskTodayOnly]);
 
   const firstItem = filtered.length === 0 ? 0 : startIndex + 1;
 
@@ -1241,12 +1246,17 @@ async function confirmDelete() {
                     <tr><td colSpan={authUser.role === "Admin" ? 6 : authUser.role === "Sub Admin" ? 7 : 6} className="empty">No assigned tasks found.</td></tr>
                   ) : filteredAssignedTasks.map((profile) => (
                     <tr key={profile.id}>
-                      {authUser.role !== "Employee" && (
-                        <td className="assignedToCell">
-                          <strong>{profile.assignment?.assignedToName || "Not Available"}</strong>
-                          <small>{profile.assignment?.assignedToRole || ""}</small>
-                        </td>
-                      )}
+                      {authUser.role !== "Employee" && (() => {
+                        const assignment = profile.assignment || {};
+                        const adminAssignment = profile.adminAssignment || profile.assignmentHistory?.find((item) => item.assignedByRole === "Admin") || assignment;
+                        const displayedAssignment = authUser.role === "Admin" ? adminAssignment : assignment;
+                        return (
+                          <td className="assignedToCell">
+                            <strong>{displayedAssignment.assignedToName || "Not Available"}</strong>
+                            <small>{displayedAssignment.assignedToRole || ""}</small>
+                          </td>
+                        );
+                      })()}
                       <td>
                         <div className="profileCell">
                           {profile.photoUrl && profile.photoUrl !== "Not Available" ? <img className="profileAvatar" src={profile.photoUrl} alt="" referrerPolicy="no-referrer"/> : <span className="profileAvatarPlaceholder">{(profile.name || "?").charAt(0).toUpperCase()}</span>}
