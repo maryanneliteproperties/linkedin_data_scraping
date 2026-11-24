@@ -25,6 +25,7 @@ export default function App() {
   const [adminUsers, setAdminUsers] = useState([]);
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [assignedTasks, setAssignedTasks] = useState([]);
+  const [syncingAssignedTasks, setSyncingAssignedTasks] = useState(false);
   const [assignedToId, setAssignedToId] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [leadTab, setLeadTab] = useState("admin");
@@ -192,6 +193,25 @@ export default function App() {
       const data = await response.json();
       setAssignedTasks(Array.isArray(data) ? data : []);
     } catch (err) { setError(err.message || "Could not load assigned tasks."); }
+  }
+
+  async function syncExistingAssignedTasksToTelecaller() {
+    setSyncingAssignedTasks(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${API}/assigned-tasks/sync-telecaller`, {
+        method: "POST",
+        credentials: "include"
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || "Existing assigned tasks sync failed.");
+      setNotice(result.message || "Existing assigned tasks synced to Telecaller.");
+    } catch (err) {
+      setError(err.message || "Could not sync existing assigned tasks.");
+    } finally {
+      setSyncingAssignedTasks(false);
+    }
   }
 
   useEffect(() => {
@@ -1227,7 +1247,7 @@ async function confirmDelete() {
           {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
           {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
           <section className="tablePanel assignedTasksPanel">
-            <div className="tableToolbar"><div><h2>Assigned Task List</h2><p>{filteredAssignedTasks.length} assigned profiles</p></div><div className="taskFilters"><label>Assigned To<select value={taskAssignedToFilter} onChange={(e) => setTaskAssignedToFilter(e.target.value)}><option value="all">All</option>{authUser.role === "Sub Admin" && <option value={authUser.id}>Me</option>}{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Date<input type="date" value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} /></label><label className="todayFilter"><input type="checkbox" checked={taskTodayOnly} onChange={(e) => setTaskTodayOnly(e.target.checked)} />Today</label><button type="button" className="iconBtn" onClick={loadAssignedTasks} title="Refresh"><RefreshCw size={17}/></button></div></div>
+            <div className="tableToolbar"><div><h2>Assigned Task List</h2><p>{filteredAssignedTasks.length} assigned profiles</p></div><div className="taskFilters">{authUser.role === "Admin" && <button type="button" className="primaryBtn" onClick={syncExistingAssignedTasksToTelecaller} disabled={syncingAssignedTasks}>{syncingAssignedTasks ? "Syncing..." : "Sync Existing Tasks"}</button>}<label>Assigned To<select value={taskAssignedToFilter} onChange={(e) => setTaskAssignedToFilter(e.target.value)}><option value="all">All</option>{authUser.role === "Sub Admin" && <option value={authUser.id}>Me</option>}{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Date<input type="date" value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} /></label><label className="todayFilter"><input type="checkbox" checked={taskTodayOnly} onChange={(e) => setTaskTodayOnly(e.target.checked)} />Today</label><button type="button" className="iconBtn" onClick={loadAssignedTasks} title="Refresh"><RefreshCw size={17}/></button></div></div>
             <div className="tableWrap">
               <table className={`assignedTaskTable ${authUser.role === "Admin" ? "assignedTaskAdmin" : authUser.role === "Sub Admin" ? "assignedTaskSubAdmin" : "assignedTaskEmployee"}`}>
                 <thead>
