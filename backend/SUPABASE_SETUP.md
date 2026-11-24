@@ -8,7 +8,7 @@ This project stores LinkedIn profiles and application user accounts in Supabase.
 2. Open **SQL Editor**.
 3. Run the complete SQL in `backend/supabase-schema.sql`.
 
-The schema enables Row Level Security and intentionally creates no public/anon policies. The Express backend accesses the tables using its server-side secret key.
+The schema enables Row Level Security and intentionally creates no public/anon policies. It creates the `users`, `profiles`, and `sessions` tables. The Express backend accesses them using its server-side secret key.
 
 ## 2. Configure the backend environment
 
@@ -46,5 +46,6 @@ If the users table is empty, the backend provisions the initial Admin from the e
 
 - `public.profiles`: one row per profile; the existing profile object is stored in the `data` JSONB column so the current API response format remains unchanged.
 - `public.users`: account details and the existing scrypt PIN salt/hash. PIN hashes are never returned by the API.
+- `public.sessions`: SHA-256 hashes of login tokens, user references, and expiry timestamps. Raw session tokens are never stored in the database. This shared table keeps logins valid across Vercel serverless instances until logout or the 12-hour expiry.
 - Browser extension profile-save endpoint `POST /api/profiles` remains public for extension compatibility; it writes to Supabase through the backend.
-- Login sessions remain in backend memory and expire after 12 hours. They are not profile/account records.
+- Login sessions are stored in Supabase and expire after 12 hours. This is required for Vercel/serverless deployments.

@@ -2,6 +2,10 @@
 
 React + Vite frontend and Node.js + Express backend for viewing and storing authorized LinkedIn profile data.
 
+## Deployment
+
+See [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md) for the Vercel setup, required environment variables, Supabase session-table migration, and Preview verification steps.
+
 ## Current workflow
 1. Sign in with LinkedIn using the official OpenID Connect flow.
 2. The app can read the signed-in member's basic profile (name, email, and profile photo when LinkedIn returns them).
@@ -80,7 +84,7 @@ The app must have **Sign In with LinkedIn using OpenID Connect** enabled. The lo
 - `POST /api/auth/save-my-profile` – saves the signed-in member's basic profile using existing normalization, duplicate detection, and JSON storage.
 - `POST /api/auth/logout` – clears the local app session.
 
-The access token stays on the backend and is not sent to the browser. Local sessions are held in server memory and will be cleared when the backend restarts; use a persistent session store before deploying this app.
+The access token stays on the backend and is not sent to the browser. The current deployment branch persists ProfileDesk PIN-login sessions in Supabase.
 
 ## Important LinkedIn access limitation
 OpenID Connect returns basic information about the member who signs in. It does **not** provide permission to retrieve other members' full profiles by pasting their profile URLs. Other-member Profile API access requires separate LinkedIn approval and is still subject to LinkedIn's member privacy and data-use restrictions. The URL extraction endpoint intentionally remains unavailable until a permitted provider/API is approved and configured. This app does not collect LinkedIn passwords or private `li_at` cookies and does not automate LinkedIn login or bypass access controls.
@@ -94,4 +98,4 @@ OpenID Connect returns basic information about the member who signs in. It does 
 - `POST /api/profiles/import` – import structured profiles (API endpoint only).
 
 ## Storage
-The current JSON file storage is for local development only. Typical serverless deployments do not guarantee persistent filesystem writes. Use a persistent database or object store before production or multi-user deployment.
+Profile records are stored in `public.profiles` as JSONB, and application accounts are stored in `public.users`. Login token hashes and expiry timestamps are stored in `public.sessions`. Vercel deployment uses Supabase for persistent data; local JSON files remain as backups for migration verification.

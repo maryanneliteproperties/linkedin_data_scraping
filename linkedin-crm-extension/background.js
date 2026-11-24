@@ -1,4 +1,5 @@
-const API_BASE = "http://localhost:5000/api";
+importScripts("config.js");
+const API_BASE = String(globalThis.LINKEDIN_CRM_CONFIG?.API_BASE || "http://localhost:5000/api").replace(/\/$/, "");
 const AUTH_STORAGE_KEY = "linkedin_crm_extension_auth";
 
 async function fetchWithNetworkRetry(url, options, retries = 3) {
