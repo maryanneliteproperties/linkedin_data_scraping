@@ -483,7 +483,10 @@ app.post("/api/profiles/assign", auth.requireAuth, async (req, res, next) => {
       }
       const assignment = { assignedToId: target.id, assignedToName: target.name, assignedToRole: target.role, assignedById: req.authUser.id, assignedByName: req.authUser.name, assignedByRole: req.authUser.role, assignedAt: now };
       const history = Array.isArray(profile.assignmentHistory) ? profile.assignmentHistory : [];
-      updatedRows.push({ id: row.id, data: { ...profile, assignment, assignmentHistory: [...history, assignment], updatedAt: now }, created_at: row.created_at || now, updated_at: now });
+      const adminAssignment = profile.adminAssignment || (req.authUser.role === "Admin"
+        ? assignment
+        : history.find((item) => item.assignedByRole === "Admin") || null);
+      updatedRows.push({ id: row.id, data: { ...profile, assignment, adminAssignment, assignmentHistory: [...history, assignment], updatedAt: now }, created_at: row.created_at || now, updated_at: now });
     }
     const { error: saveError } = await supabase.from("profiles").upsert(updatedRows, { onConflict: "id" });
     if (saveError) throw saveError;
@@ -520,8 +523,8 @@ app.get("/api/profiles", auth.requireAuth, async (req, res, next) => {
 
     let results = profiles.filter((profile) => {
       const assignment = profile.assignment;
-      if (req.authUser.role === "Admin") return true;
-      if (req.authUser.role === "Sub Admin") return !assignment || assignment.assignedToId === req.authUser.id || assignment.assignedById === req.authUser.id;
+      if (req.authUser.role === "Admin") return !assignment;
+      if (req.authUser.role === "Sub Admin") return !assignment || (assignment.assignedToId === req.authUser.id && assignment.assignedByRole === "Admin");
       return assignment?.assignedToId === req.authUser.id;
     });
     if (query) {
