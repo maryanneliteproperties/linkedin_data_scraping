@@ -501,7 +501,7 @@ app.get("/api/assigned-tasks", auth.requireAuth, async (req, res, next) => {
       const assignment = profile.assignment;
       if (!assignment) return false;
       if (req.authUser.role === "Admin") return true;
-      if (req.authUser.role === "Sub Admin") return assignment.assignedToId === req.authUser.id || assignment.assignedById === req.authUser.id;
+      if (req.authUser.role === "Sub Admin") return assignment.assignedById === req.authUser.id && assignment.assignedByRole === "Sub Admin" && assignment.assignedToRole === "Employee";
       return assignment.assignedToId === req.authUser.id;
     });
     res.json(tasks);
