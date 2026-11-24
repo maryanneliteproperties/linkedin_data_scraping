@@ -461,7 +461,7 @@ app.post("/api/profiles/assign", auth.requireAuth, async (req, res, next) => {
     const assignedToId = asText(req.body?.assignedToId);
     if (!ids.length || !assignedToId) return res.status(400).json({ message: "Select profiles and an assignee." });
     if (!["Admin", "Sub Admin"].includes(req.authUser.role)) return res.status(403).json({ message: "Employees cannot assign profiles." });
-    const { data: target, error: targetError } = await supabase.from("users").select("id,name,role").eq("id", assignedToId).maybeSingle();
+    const { data: target, error: targetError } = await supabase.from("users").select("id,name,email,role").eq("id", assignedToId).maybeSingle();
     if (targetError) throw targetError;
     const allowedRoles = req.authUser.role === "Admin" ? ["Sub Admin", "Employee"] : ["Employee"];
     if (!target || !allowedRoles.includes(target.role)) return res.status(403).json({ message: "You cannot assign profiles to this user." });
@@ -490,7 +490,55 @@ app.post("/api/profiles/assign", auth.requireAuth, async (req, res, next) => {
     }
     const { error: saveError } = await supabase.from("profiles").upsert(updatedRows, { onConflict: "id" });
     if (saveError) throw saveError;
-    res.json({ success: true, assignedCount: updatedRows.length, message: updatedRows.length + " profile(s) assigned to " + target.name + "." });
+
+    // Sync Employee assignments to the separate Telecaller CRM database.
+    // A sync failure never rolls back the LinkedIn assignment.
+    const syncUrl = asText(process.env.TELECALLER_LEAD_SYNC_URL);
+    const syncSecret = asText(process.env.TELECALLER_LEAD_SYNC_SECRET);
+    const syncResults = [];
+    if (target.role === "Employee" && target.email && syncUrl && syncSecret) {
+      for (const item of updatedRows) {
+        const profile = item.data || {};
+        const assignment = profile.assignment || {};
+        try {
+          const response = await fetch(syncUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-linkedin-sync-secret": syncSecret },
+            body: JSON.stringify({
+              sourceLeadId: String(item.id),
+              employeeEmail: target.email,
+              profileName: profile.name,
+              photoUrl: profile.photoUrl,
+              designation: profile.designation,
+              company: profile.company,
+              phone: profile.phone,
+              contactEmail: profile.email,
+              linkedinUrl: profile.profileUrl,
+              assignedByName: assignment.assignedByName,
+              assignedByRole: assignment.assignedByRole,
+              assignedAt: assignment.assignedAt,
+              project: profile.telecallerProject || profile.projectName || null,
+              followUpDate: profile.followUpDate || null,
+              siteVisitDate: profile.siteVisitDate || null
+            })
+          });
+          const result = await response.json().catch(() => ({}));
+          syncResults.push({ sourceLeadId: String(item.id), synced: response.ok, message: result.error || null });
+        } catch (syncError) {
+          syncResults.push({ sourceLeadId: String(item.id), synced: false, message: syncError.message });
+        }
+      }
+    } else if (target.role === "Employee") {
+      syncResults.push({ synced: false, message: "Telecaller sync environment is not configured or Employee email is missing." });
+    }
+    const failedSyncs = syncResults.filter((item) => !item.synced).length;
+    res.json({
+      success: true,
+      assignedCount: updatedRows.length,
+      syncResults,
+      message: updatedRows.length + " profile(s) assigned to " + target.name + "." +
+        (failedSyncs ? " " + failedSyncs + " lead(s) could not sync to Telecaller." : "")
+    });
   } catch (error) { next(error); }
 });
 
