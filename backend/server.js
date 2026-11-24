@@ -29,7 +29,7 @@ const sessions = new Map();
 
 // Restrict credentialed browser requests to explicitly configured frontend/extension origins.
 const allowedOrigins = new Set(
-  [FRONTEND_URL, ...(process.env.CORS_ORIGINS || "").split(",")]
+  [FRONTEND_URL, process.env.VERCEL_URL ? "https://" + process.env.VERCEL_URL : "", ...(process.env.CORS_ORIGINS || "").split(",")]
     .map((origin) => origin.trim())
     .filter(Boolean)
 );
