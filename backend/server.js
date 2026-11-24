@@ -474,7 +474,13 @@ app.post("/api/profiles/assign", auth.requireAuth, async (req, res, next) => {
       const profile = row.data || {};
       const current = profile.assignment || null;
       if (req.authUser.role === "Admin" && current) return res.status(409).json({ message: "One or more selected profiles are already assigned. Refresh the Lead List." });
-      if (req.authUser.role === "Sub Admin" && (!current || current.assignedToId !== req.authUser.id || current.assignedByRole !== "Admin")) return res.status(403).json({ message: "Sub Admin can assign only profiles assigned to them by Admin." });
+      if (req.authUser.role === "Sub Admin") {
+        const assignedByAdminToThisUser = current?.assignedToId === req.authUser.id && current?.assignedByRole === "Admin";
+        const ownUnassignedProfile = !current && profile.createdById === req.authUser.id && profile.createdByRole === "Sub Admin";
+        if (!assignedByAdminToThisUser && !ownUnassignedProfile) {
+          return res.status(403).json({ message: "Sub Admin can assign only profiles assigned to them by Admin or profiles they created." });
+        }
+      }
       const assignment = { assignedToId: target.id, assignedToName: target.name, assignedToRole: target.role, assignedById: req.authUser.id, assignedByName: req.authUser.name, assignedByRole: req.authUser.role, assignedAt: now };
       const history = Array.isArray(profile.assignmentHistory) ? profile.assignmentHistory : [];
       updatedRows.push({ id: row.id, data: { ...profile, assignment, assignmentHistory: [...history, assignment], updatedAt: now }, created_at: row.created_at || now, updated_at: now });
