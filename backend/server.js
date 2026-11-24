@@ -27,10 +27,18 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const pendingStates = new Map();
 const sessions = new Map();
 
-// Scalable CORS configuration
+// Restrict credentialed browser requests to explicitly configured frontend/extension origins.
+const allowedOrigins = new Set(
+  [FRONTEND_URL, ...(process.env.CORS_ORIGINS || "").split(",")]
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      return callback(new Error("Origin is not allowed by CORS."));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
@@ -739,9 +747,17 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-auth.provisionInitialAdmin()
-  .then(() => app.listen(PORT, () => console.log("API running at http://localhost:" + PORT)))
-  .catch((error) => {
-    console.error("[Startup] Supabase connection or Admin provisioning failed:", error.message);
-    process.exitCode = 1;
-  });
+export const ready = auth.provisionInitialAdmin();
+export { app };
+export default app;
+
+// Keep the existing local development command working; Vercel imports the app
+// through api/index.js and awaits the same initialization promise per instance.
+if (process.env.VERCEL !== "1") {
+  ready
+    .then(() => app.listen(PORT, () => console.log("API running at http://localhost:" + PORT)))
+    .catch((error) => {
+      console.error("[Startup] Supabase connection or Admin provisioning failed:", error.message);
+      process.exitCode = 1;
+    });
+}
