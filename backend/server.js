@@ -556,6 +556,97 @@ app.get("/api/assigned-tasks", auth.requireAuth, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// One-time, idempotent backfill for profiles that were assigned before
+// LinkedIn → Telecaller live sync was enabled. Only Admin can trigger it.
+app.post("/api/assigned-tasks/sync-telecaller", auth.requireAuth, async (req, res, next) => {
+  try {
+    if (req.authUser.role !== "Admin") {
+      return res.status(403).json({ message: "Only Admin can sync existing assigned tasks to Telecaller." });
+    }
+
+    const syncUrl = asText(process.env.TELECALLER_LEAD_SYNC_URL);
+    const syncSecret = asText(process.env.TELECALLER_LEAD_SYNC_SECRET);
+    if (!syncUrl || !syncSecret) {
+      return res.status(503).json({ message: "Telecaller sync environment is not configured." });
+    }
+
+    const profiles = await readProfiles();
+    const assignedProfiles = profiles.filter((profile) =>
+      profile.assignment?.assignedToRole === "Employee" && profile.assignment?.assignedToId
+    );
+    const employeeIds = [...new Set(assignedProfiles.map((profile) => String(profile.assignment.assignedToId)))];
+    if (!employeeIds.length) {
+      return res.json({ success: true, total: 0, synced: 0, failed: 0, skipped: 0, message: "No Employee-assigned tasks found to sync." });
+    }
+
+    const { data: employees, error: employeesError } = await supabase
+      .from("users").select("id,email").in("id", employeeIds);
+    if (employeesError) throw employeesError;
+    const employeeById = new Map((employees || []).map((employee) => [String(employee.id), employee]));
+
+    let synced = 0;
+    let failed = 0;
+    let skipped = 0;
+    const results = [];
+
+    for (const profile of assignedProfiles) {
+      const assignment = profile.assignment || {};
+      const employee = employeeById.get(String(assignment.assignedToId));
+      const assignedAt = asText(assignment.assignedAt);
+      if (!employee?.email || !assignedAt || !Number.isFinite(Date.parse(assignedAt))) {
+        skipped++;
+        results.push({ sourceLeadId: String(profile.id), synced: false, skipped: true, message: "Employee email or valid assignment date is missing." });
+        continue;
+      }
+
+      try {
+        const response = await fetch(syncUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-linkedin-sync-secret": syncSecret },
+          body: JSON.stringify({
+            sourceLeadId: String(profile.id),
+            employeeEmail: employee.email,
+            profileName: profile.name || "Not Available",
+            photoUrl: profile.photoUrl,
+            designation: profile.designation,
+            company: profile.company,
+            phone: profile.phone,
+            contactEmail: profile.email,
+            linkedinUrl: profile.profileUrl,
+            assignedByName: assignment.assignedByName,
+            assignedByRole: assignment.assignedByRole,
+            assignedAt,
+            project: profile.telecallerProject || profile.projectName || null,
+            followUpDate: profile.followUpDate || null,
+            siteVisitDate: profile.siteVisitDate || null
+          })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+          synced++;
+          results.push({ sourceLeadId: String(profile.id), synced: true });
+        } else {
+          failed++;
+          results.push({ sourceLeadId: String(profile.id), synced: false, message: result.error || result.message || "Telecaller sync failed." });
+        }
+      } catch (syncError) {
+        failed++;
+        results.push({ sourceLeadId: String(profile.id), synced: false, message: syncError.message || "Telecaller sync failed." });
+      }
+    }
+
+    res.json({
+      success: failed === 0,
+      total: assignedProfiles.length,
+      synced,
+      failed,
+      skipped,
+      results,
+      message: `Existing assigned tasks sync completed: ${synced} synced, ${failed} failed, ${skipped} skipped.`
+    });
+  } catch (error) { next(error); }
+});
+
 // ----------------------------------------------------
 // Profile CRUD Routes
 // ----------------------------------------------------
