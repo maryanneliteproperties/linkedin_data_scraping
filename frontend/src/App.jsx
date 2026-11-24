@@ -58,6 +58,42 @@ export default function App() {
   const [exportingFormat, setExportingFormat] = useState("");
 
   
+  // Fix export dropdown on scroll and outside click
+  useEffect(() => {
+    if (exportMenuFor === null) return;
+
+    const closeExportMenu = () => {
+      setExportMenuFor(null);
+    };
+
+    const handleOutsideClick = (event) => {
+      if (
+        !event.target.closest(".rowExportWrap") &&
+        !event.target.closest(".exportDropdown")
+      ) {
+        closeExportMenu();
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        closeExportMenu();
+      }
+    };
+
+    window.addEventListener("scroll", closeExportMenu, true);
+    window.addEventListener("resize", closeExportMenu);
+    document.addEventListener("pointerdown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("scroll", closeExportMenu, true);
+      window.removeEventListener("resize", closeExportMenu);
+      document.removeEventListener("pointerdown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [exportMenuFor]);
+
 
   async function loadProfiles(showLoader = true) {
     if (showLoader) setLoading(true);
