@@ -265,6 +265,13 @@ export default function App() {
   );
 
   function canSelectProfile(profile) {
+    if (authUser?.role === "Sub Admin") {
+      const assignment = profile?.assignment;
+      if (leadTab === "admin") {
+        return assignment?.assignedToId === authUser.id && assignment?.assignedByRole === "Admin";
+      }
+      return profile?.createdById === authUser.id && !assignment;
+    }
     return canManageProfile(profile) && !(authUser?.role === "Admin" && profile?.assignment);
   }
 
@@ -807,7 +814,7 @@ async function confirmDelete() {
 
       <section className="tablePanel">
         {(authUser.role === "Sub Admin" || authUser.role === "Employee") && <div className="leadTabs"><button type="button" className={leadTab === "admin" ? "active" : ""} onClick={() => { setLeadTab("admin"); setSelectedProfiles([]); setCurrentPage(1); }}>Assigned by Admin</button><button type="button" className={leadTab === "own" ? "active" : ""} onClick={() => { setLeadTab("own"); setSelectedProfiles([]); setCurrentPage(1); }}>{authUser.role === "Sub Admin" ? "Assigned by Own" : "Assigned by Sub Admin"}</button></div>}
-        <div className="tableToolbar"><div><h2>Lead List</h2><p>{filtered.length} profiles</p></div><div className="toolbarActions">{(authUser.role === "Admin" || (authUser.role === "Sub Admin" && leadTab === "admin")) && <div className="assignmentControls"><span>{selectedProfiles.length} selected</span><select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}><option value="">Assigned To</option>{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}</select><button className="primaryBtn" type="button" onClick={assignSelectedProfiles} disabled={assigning || !selectedProfiles.length || !assignedToId}>{assigning ? "Submitting..." : "Submit"}</button></div>}<div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
+        <div className="tableToolbar"><div><h2>Lead List</h2><p>{filtered.length} profiles</p></div><div className="toolbarActions">{(authUser.role === "Admin" || authUser.role === "Sub Admin") && <div className="assignmentControls"><span>{selectedProfiles.length} selected</span><select value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)}><option value="">Assigned To</option>{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}</select><button className="primaryBtn" type="button" onClick={assignSelectedProfiles} disabled={assigning || !selectedProfiles.length || !assignedToId}>{assigning ? "Submitting..." : "Submit"}</button></div>}<div className="searchBox"><Search size={17}/><input value={search} onChange={(event) =>{ setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search name, designation, company, email, phone..." /></div><button className="iconBtn" onClick={() => loadProfiles()} title="Refresh" type="button"><RefreshCw size={17}/></button></div></div>
 
 {viewingProfile && (
   <div className="modalBackdrop" onClick={() => setViewingProfile(null)}>
