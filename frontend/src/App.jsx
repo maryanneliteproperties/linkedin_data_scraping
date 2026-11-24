@@ -1280,7 +1280,19 @@ async function confirmDelete() {
                           <span><Phone size={14}/><span>{profile.phone || "Not Available"}</span></span>
                         </div>
                       </td>
-                      {authUser.role !== "Admin" && <td className="assignedByCell"><strong>{profile.assignment?.assignedByName || "Not Available"}</strong><small>{profile.assignment?.assignedByRole || ""}</small></td>}
+                      {authUser.role !== "Admin" && (() => {
+                        const currentAssignment = profile.assignment || {};
+                        const originalAdminAssignment = profile.adminAssignment || profile.assignmentHistory?.find((item) => item.assignedByRole === "Admin");
+                        const assignedByAdmin = originalAdminAssignment?.assignedByRole === "Admin";
+                        return (
+                          <td className="assignedByCell">
+                            {authUser.role === "Sub Admin" && !assignedByAdmin ? <strong>Own Lead</strong> : <>
+                              <strong>{(authUser.role === "Sub Admin" ? originalAdminAssignment?.assignedByName : currentAssignment.assignedByName) || "Not Available"}</strong>
+                              <small>{(authUser.role === "Sub Admin" ? originalAdminAssignment?.assignedByRole : currentAssignment.assignedByRole) || ""}</small>
+                            </>}
+                          </td>
+                        );
+                      })()}
                       <td>{profile.assignment?.assignedAt ? new Date(profile.assignment.assignedAt).toLocaleDateString() : "Not Available"}</td>
                       <td>{profile.profileUrl && profile.profileUrl !== "Not Available" ? <a className="profileLink" href={profile.profileUrl} target="_blank" rel="noopener noreferrer">Open Profile ↗</a> : "Not Available"}</td>
                     </tr>
