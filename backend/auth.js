@@ -147,7 +147,8 @@ export function setupAuth(app, _dataDir, asText) {
       const token = crypto.randomBytes(32).toString("hex");
       await createSession(token, user.id);
       const secure = process.env.NODE_ENV === "production";
-      res.setHeader("Set-Cookie", cookieName + "=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=" + maxAge + "; SameSite=" + (secure ? "None; Secure" : "Lax"));
+      const sameSite = process.env.COOKIE_CROSS_SITE === "true" ? "None; Secure" : "Lax" + (secure ? "; Secure" : "");
+      res.setHeader("Set-Cookie", cookieName + "=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=" + maxAge + "; SameSite=" + sameSite);
       res.json({ authenticated: true, user: toSafeUser(user) });
     } catch (error) { next(error); }
   });
