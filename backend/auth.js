@@ -4,7 +4,6 @@ import { supabase } from "./supabase.js";
 export function setupAuth(app, _dataDir, asText) {
   const cookieName = "profiledesk_auth";
   const maxAge = 60 * 60 * 12;
-  const sessions = new Map();
   const pinPattern = /^[0-9]{4,8}$/;
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const usernamePattern = /^[a-zA-Z0-9._-]{3,30}$/;
@@ -18,6 +17,32 @@ export function setupAuth(app, _dataDir, asText) {
   function hashPin(pin) {
     const salt = crypto.randomBytes(16).toString("hex");
     return { salt, hash: crypto.scryptSync(String(pin), salt, 64).toString("hex") };
+  }
+  const hashSessionToken = (token) => crypto.createHash("sha256").update(String(token)).digest("hex");
+  async function createSession(token, userId) {
+    const expiresAt = new Date(Date.now() + maxAge * 1000).toISOString();
+    const { error } = await supabase.from("sessions").insert({ token_hash: hashSessionToken(token), user_id: userId, expires_at: expiresAt });
+    if (error) throw error;
+  }
+  async function deleteSession(token) {
+    if (!token) return;
+    const { error } = await supabase.from("sessions").delete().eq("token_hash", hashSessionToken(token));
+    if (error) throw error;
+  }
+  async function deleteUserSessions(userId) {
+    const { error } = await supabase.from("sessions").delete().eq("user_id", userId);
+    if (error) throw error;
+  }
+  async function verifySession(token) {
+    if (!token) return null;
+    const { data, error } = await supabase.from("sessions").select("user_id,expires_at").eq("token_hash", hashSessionToken(token)).maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    if (new Date(data.expires_at).getTime() <= Date.now()) {
+      await deleteSession(token);
+      return null;
+    }
+    return data;
   }
   function verifyPin(pin, user) {
     try {
@@ -44,12 +69,9 @@ export function setupAuth(app, _dataDir, asText) {
     try {
       const bearer = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1];
       const token = bearer || cookies(req.headers.cookie)[cookieName];
-      const session = token ? sessions.get(token) : null;
-      if (!session || session.expiresAt < Date.now()) {
-        if (token) sessions.delete(token);
-        return res.status(401).json({ message: "Please log in to continue." });
-      }
-      const { data, error } = await supabase.from("users").select("*").eq("id", session.userId).maybeSingle();
+      const session = await verifySession(token);
+      if (!session) return res.status(401).json({ message: "Please log in to continue." });
+      const { data, error } = await supabase.from("users").select("*").eq("id", session.user_id).maybeSingle();
       if (error) throw error;
       if (!data) return res.status(401).json({ message: "Session is no longer valid. Please log in again." });
       req.authUser = fromDb(data);
@@ -96,15 +118,15 @@ export function setupAuth(app, _dataDir, asText) {
         (role === "Admin" || item.username?.toLowerCase() === username) && verifyPin(pin, item));
       if (!user) return res.status(401).json({ message: role === "Admin" ? "Incorrect Admin PIN." : "Incorrect user name, role or PIN." });
       const token = crypto.randomBytes(32).toString("hex");
-      sessions.set(token, { userId: user.id, expiresAt: Date.now() + maxAge * 1000 });
+      await createSession(token, user.id);
       res.json({ authenticated: true, token, user: toSafeUser(user) });
     } catch (error) { next(error); }
   });
 
-  app.post("/api/extension/auth/logout", (req, res) => {
+  app.post("/api/extension/auth/logout", async (req, res, next) => {
     const token = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-    if (token) sessions.delete(token);
-    res.json({ success: true });
+    try { await deleteSession(token); res.json({ success: true }); }
+    catch (error) { next(error); }
   });
 
   app.post("/api/auth/login", async (req, res, next) => {
@@ -123,7 +145,7 @@ export function setupAuth(app, _dataDir, asText) {
         (role === "Admin" || item.username?.toLowerCase() === username) && verifyPin(pin, item));
       if (!user) return res.status(401).json({ message: role === "Admin" ? "Incorrect Admin PIN." : "Incorrect user name, role or PIN." });
       const token = crypto.randomBytes(32).toString("hex");
-      sessions.set(token, { userId: user.id, expiresAt: Date.now() + maxAge * 1000 });
+      await createSession(token, user.id);
       const secure = process.env.NODE_ENV === "production";
       res.setHeader("Set-Cookie", cookieName + "=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=" + maxAge + "; SameSite=" + (secure ? "None; Secure" : "Lax"));
       res.json({ authenticated: true, user: toSafeUser(user) });
@@ -131,13 +153,15 @@ export function setupAuth(app, _dataDir, asText) {
   });
 
   app.get("/api/auth/me", requireAuth, (req, res) => res.json({ authenticated: true, user: toSafeUser(req.authUser) }));
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res, next) => {
     const bearer = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1];
     const token = bearer || cookies(req.headers.cookie)[cookieName];
-    if (token) sessions.delete(token);
-    const sameSite = process.env.NODE_ENV === "production" ? "None; Secure" : "Lax";
-    res.setHeader("Set-Cookie", cookieName + "=; HttpOnly; Path=/; Max-Age=0; SameSite=" + sameSite);
-    res.json({ success: true });
+    try {
+      await deleteSession(token);
+      const sameSite = process.env.COOKIE_CROSS_SITE === "true" ? "None; Secure" : "Lax" + (process.env.NODE_ENV === "production" ? "; Secure" : "");
+      res.setHeader("Set-Cookie", cookieName + "=; HttpOnly; Path=/; Max-Age=0; SameSite=" + sameSite);
+      res.json({ success: true });
+    } catch (error) { next(error); }
   });
 
   app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res, next) => {
@@ -216,7 +240,7 @@ export function setupAuth(app, _dataDir, asText) {
       if (target.role === "Admin") return res.status(403).json({ message: "Admin account cannot be deleted here." });
       const { error } = await supabase.from("users").delete().eq("id", target.id);
       if (error) throw error;
-      for (const [token, session] of sessions.entries()) if (session.userId === target.id) sessions.delete(token);
+      await deleteUserSessions(target.id);
       res.json({ success: true, message: "Account deleted successfully." });
     } catch (error) { next(error); }
   });
