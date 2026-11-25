@@ -34,6 +34,7 @@ export default function App() {
   const [leadDateFilter, setLeadDateFilter] = useState("");
   const [leadTodayOnly, setLeadTodayOnly] = useState(false);
   const [taskAssignedToFilter, setTaskAssignedToFilter] = useState("all");
+  const [taskAssignedByFilter, setTaskAssignedByFilter] = useState("all");
   const [taskDateFilter, setTaskDateFilter] = useState("");
   const [taskTodayOnly, setTaskTodayOnly] = useState(false);
   const [activePage, setActivePage] = useState(window.location.hash === "#employee-accounts" ? "employees" : window.location.hash === "#assigned-tasks" ? "assigned-tasks" : "leads");
@@ -305,10 +306,15 @@ export default function App() {
     const assignedAt = displayedAssignment.assignedAt ? new Date(displayedAssignment.assignedAt) : null;
     const today = new Date();
     const isToday = assignedAt && assignedAt.getFullYear() === today.getFullYear() && assignedAt.getMonth() === today.getMonth() && assignedAt.getDate() === today.getDate();
-    return (taskAssignedToFilter === "all" || displayedAssignment.assignedToId === taskAssignedToFilter)
+    const assignedByMatches = authUser?.role === "Employee"
+      ? (taskAssignedByFilter === "all"
+        || (taskAssignedByFilter === "Admin" && assignment.assignedByRole === "Admin")
+        || (taskAssignedByFilter !== "Admin" && assignment.assignedById === taskAssignedByFilter))
+      : (taskAssignedToFilter === "all" || displayedAssignment.assignedToId === taskAssignedToFilter);
+    return assignedByMatches
       && (!taskDateFilter || (assignedAt && [assignedAt.getFullYear(), String(assignedAt.getMonth() + 1).padStart(2, "0"), String(assignedAt.getDate()).padStart(2, "0")].join("-") === taskDateFilter))
       && (!taskTodayOnly || isToday);
-  }), [assignedTasks, authUser, taskAssignedToFilter, taskDateFilter, taskTodayOnly]);
+  }), [assignedTasks, authUser, taskAssignedToFilter, taskAssignedByFilter, taskDateFilter, taskTodayOnly]);
 
   const firstItem = filtered.length === 0 ? 0 : startIndex + 1;
 
@@ -1247,7 +1253,7 @@ async function confirmDelete() {
           {error && <div className="errorBox"><AlertCircle size={15}/>{error}</div>}
           {notice && <div className="successBox"><CheckCircle2 size={15}/>{notice}</div>}
           <section className="tablePanel assignedTasksPanel">
-            <div className="tableToolbar"><div><h2>Assigned Task List</h2><p>{filteredAssignedTasks.length} assigned profiles</p></div><div className="taskFilters">{["Admin", "Sub Admin"].includes(authUser.role) && <button type="button" className="primaryBtn" onClick={syncExistingAssignedTasksToTelecaller} disabled={syncingAssignedTasks}>{syncingAssignedTasks ? "Syncing..." : "Sync Existing Tasks"}</button>}<label>Assigned To<select value={taskAssignedToFilter} onChange={(e) => setTaskAssignedToFilter(e.target.value)}><option value="all">All</option>{authUser.role === "Sub Admin" && <option value={authUser.id}>Me</option>}{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Date<input type="date" value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} /></label><label className="todayFilter"><input type="checkbox" checked={taskTodayOnly} onChange={(e) => setTaskTodayOnly(e.target.checked)} />Today</label><button type="button" className="iconBtn" onClick={loadAssignedTasks} title="Refresh"><RefreshCw size={17}/></button></div></div>
+            <div className="tableToolbar"><div><h2>Assigned Task List</h2><p>{filteredAssignedTasks.length} assigned profiles</p></div><div className="taskFilters">{["Admin", "Sub Admin"].includes(authUser.role) && <button type="button" className="primaryBtn" onClick={syncExistingAssignedTasksToTelecaller} disabled={syncingAssignedTasks}>{syncingAssignedTasks ? "Syncing..." : "Sync Existing Tasks"}</button>}{authUser.role === "Employee" ? <label>Assigned By<select value={taskAssignedByFilter} onChange={(e) => setTaskAssignedByFilter(e.target.value)}><option value="all">All</option><option value="Admin">Admin</option>{Array.from(new Map(assignedTasks.filter((task) => task.assignment?.assignedByRole === "Sub Admin" && task.assignment?.assignedById).map((task) => [task.assignment.assignedById, { id: task.assignment.assignedById, name: task.assignment.assignedByName || "Sub Admin" }])).values()).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label> : <label>Assigned To<select value={taskAssignedToFilter} onChange={(e) => setTaskAssignedToFilter(e.target.value)}><option value="all">All</option>{authUser.role === "Sub Admin" && <option value={authUser.id}>Me</option>}{assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>}<label>Date<input type="date" value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} /></label><label className="todayFilter"><input type="checkbox" checked={taskTodayOnly} onChange={(e) => setTaskTodayOnly(e.target.checked)} />Today</label><button type="button" className="iconBtn" onClick={loadAssignedTasks} title="Refresh"><RefreshCw size={17}/></button></div></div>
             <div className="tableWrap">
               <table className={`assignedTaskTable ${authUser.role === "Admin" ? "assignedTaskAdmin" : authUser.role === "Sub Admin" ? "assignedTaskSubAdmin" : "assignedTaskEmployee"}`}>
                 <thead>
