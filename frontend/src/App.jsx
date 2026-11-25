@@ -1284,6 +1284,7 @@ async function confirmDelete() {
                             <span className="profileNameText">{profile.name || "Not Available"}</span>
                             <span>{profile.designation || profile.headline || "Not Available"}</span>
                             {profile.profileUrl && profile.profileUrl !== "Not Available" && <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer" className="profileSocial"><Linkedin size={13}/></a>}
+                            {authUser.role === "Admin" && profile.createdByRole === "Sub Admin" && profile.createdByName && <span className="profileCreatorBadge">{profile.createdByName}</span>}
                           </div>
                         </div>
                       </td>
