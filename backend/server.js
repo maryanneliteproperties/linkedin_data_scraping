@@ -578,7 +578,7 @@ app.post("/api/assigned-tasks/sync-telecaller", auth.requireAuth, async (req, re
       if (role === "Sub Admin") {
         return assignment.assignedById === req.authUser.id && assignment.assignedByRole === "Sub Admin";
       }
-      return true;
+      return assignment.assignedByRole === "Admin";
     });
     const employeeIds = [...new Set(assignedProfiles.map((profile) => String(profile.assignment.assignedToId)))];
     if (!employeeIds.length) {
