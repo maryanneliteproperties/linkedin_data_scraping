@@ -556,12 +556,13 @@ app.get("/api/assigned-tasks", auth.requireAuth, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// One-time, idempotent backfill for profiles that were assigned before
-// LinkedIn → Telecaller live sync was enabled. Only Admin can trigger it.
+// Idempotent backfill for existing Employee-assigned tasks.
+// Admin syncs all Employee assignments; Sub Admin syncs only tasks they assigned.
 app.post("/api/assigned-tasks/sync-telecaller", auth.requireAuth, async (req, res, next) => {
   try {
-    if (req.authUser.role !== "Admin") {
-      return res.status(403).json({ message: "Only Admin can sync existing assigned tasks to Telecaller." });
+    const role = req.authUser.role;
+    if (role !== "Admin" && role !== "Sub Admin") {
+      return res.status(403).json({ message: "Only Admin or Sub Admin can sync existing assigned tasks to Telecaller." });
     }
 
     const syncUrl = asText(process.env.TELECALLER_LEAD_SYNC_URL);
@@ -571,9 +572,14 @@ app.post("/api/assigned-tasks/sync-telecaller", auth.requireAuth, async (req, re
     }
 
     const profiles = await readProfiles();
-    const assignedProfiles = profiles.filter((profile) =>
-      profile.assignment?.assignedToRole === "Employee" && profile.assignment?.assignedToId
-    );
+    const assignedProfiles = profiles.filter((profile) => {
+      const assignment = profile.assignment || {};
+      if (assignment.assignedToRole !== "Employee" || !assignment.assignedToId) return false;
+      if (role === "Sub Admin") {
+        return assignment.assignedById === req.authUser.id && assignment.assignedByRole === "Sub Admin";
+      }
+      return true;
+    });
     const employeeIds = [...new Set(assignedProfiles.map((profile) => String(profile.assignment.assignedToId)))];
     if (!employeeIds.length) {
       return res.json({ success: true, total: 0, synced: 0, failed: 0, skipped: 0, message: "No Employee-assigned tasks found to sync." });
